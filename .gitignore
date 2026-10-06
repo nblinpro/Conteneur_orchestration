@@ -1,0 +1,14 @@
+# Secrets
+password.txt
+.env
+
+# Artefacts Docker
+*.tar
+docker-image*/
+*.log
+layers-v*.txt
+.dockerignore.off
+
+# Python
+__pycache__/
+*.pyc

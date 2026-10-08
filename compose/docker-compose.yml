@@ -1,0 +1,63 @@
+networks:
+  frontend:
+    name: frontend-network
+  backend:
+    name: backend-network
+    external: false
+
+volumes:
+  mysql_data:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: /home/nicolas/docker/data/mysql_data_volume
+
+services:
+  # docker run --name:db -d -p 3306:3306 -e MYSQL_ROOT_PASSWORD=bob -e MYSQL_DATABASE=wordpress 
+  # -e MYSQL_USER=toto -e MYSQL_PASSWORD=toto mysql:latest
+  database:
+    container_name: db
+    image: mysql:latest
+    environment:
+      - MYSQL_ROOT_PASSWORD=${ROOT_PWD}
+      - MYSQL_DATABASE=${WP_DB}
+      - MYSQL_USER=${WP_USER}
+      - MYSQL_PASSWORD=${WP_PASSWORD}
+    networks:
+      - backend
+    volumes:
+      - mysql_data:/var/lib/mysql
+      #- D:\docker\data\mysql_data_volume:/var/lib/mysql
+  myadmin:
+    container_name: phpmyadmin
+    image: phpmyadmin:5.2.3-apache
+    ports:
+      - "8080:80"
+    environment:
+      - MYSQL_ROOT_PASSWORD=${ROOT_PWD}
+      - PMA_HOST=database
+      - PMA_PORT=3306
+    depends_on:
+      - database
+    networks:
+      - frontend
+      - backend
+
+  wordpress:
+    container_name: wordpress
+    image: wordpress:latest
+    ports: 
+      - "80:80"
+    depends_on:
+      - database
+    networks:
+      - frontend
+      - backend
+    environment:
+      - WORDPRESS_DB_HOST=database
+      - WORDPRESS_DB_USER=${WP_USER}
+      - WORDPRESS_DB_PASSWORD=${WP_PASSWORD}
+      - WORDPRESS_DB_NAME=${WP_DB}
+    volumes:
+      - /home/nicolas/docker/data/wordpress_volume:/var/www/html

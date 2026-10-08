@@ -1,0 +1,88 @@
+# TP Avancé Docker Compose — application multi-services
+# Démarrage : docker compose up -d --build
+# Les valeurs sensibles sont lues dans le fichier .env (voir .env.example).
+
+services:
+  # Base de données : image officielle, jamais publiée sur la machine hôte.
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # Bonus 19 : "prêt" = PostgreSQL accepte des connexions, pas seulement "démarré".
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - db_net
+
+  # API Express : joignable par Nginx, et seule à pouvoir joindre la base.
+  backend:
+    build: ./back
+    image: tp-backend
+    restart: unless-stopped
+    environment:
+      DB_HOST: db              # nom du service PostgreSQL, pas localhost
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+    expose:
+      - "3000"                 # documenté, mais non publié sur l'hôte
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - back_net
+      - db_net
+
+  # Frontend React (fichiers statiques servis par un Nginx interne).
+  frontend:
+    build: ./front
+    image: tp-frontend
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      - front_net
+
+  # Reverse proxy : seul service publié sur la machine hôte.
+  nginx:
+    build: ./nginx
+    image: tp-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_healthy
+    networks:
+      - front_net
+      - back_net
+
+# Bonus 20 : un réseau par lien autorisé.
+#   front_net : nginx <-> frontend
+#   back_net  : nginx <-> backend
+#   db_net    : backend <-> db (internal : aucun accès vers l'extérieur)
+networks:
+  front_net:
+  back_net:
+  db_net:
+    internal: true
+
+volumes:
+  postgres_data:

@@ -12,3 +12,10 @@ layers-v*.txt
 # Python
 __pycache__/
 *.pyc
+
+# Node.js
+node_modules/
+dist/
+
+# Archives de rendu
+*.zip

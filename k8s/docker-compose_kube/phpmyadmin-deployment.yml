@@ -1,0 +1,72 @@
+# ===========================================================================
+# phpMyAdmin : équivalent du service "myadmin" du docker-compose.yml.
+# Interface web pour administrer MySQL.
+# Ce fichier contient 2 objets :
+#   1. Deployment : le pod phpMyAdmin
+#   2. Service    : l'accès depuis l'extérieur du cluster (port 8080)
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# 1. Deployment
+# ---------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: phpmyadmin-deployment
+  namespace: wordpress
+  labels:
+    app: phpmyadmin
+spec:
+  replicas: 1                   # un seul pod suffit pour un outil d'administration
+  selector:
+    matchLabels:
+      app: phpmyadmin           # gère les pods étiquetés app=phpmyadmin
+  template:
+    metadata:
+      labels:
+        app: phpmyadmin         # étiquette des pods (lien avec selector et Service)
+    spec:
+      containers:
+      - name: phpmyadmin
+        image: phpmyadmin:5.2.3-apache   # même image que dans le docker-compose
+        ports:
+        - containerPort: 80     # Apache écoute sur le port 80 dans le conteneur
+        env:
+        - name: PMA_HOST        # serveur MySQL auquel phpMyAdmin se connecte
+          value: database-service   # nom du Service MySQL (remplace "database" de Compose)
+        - name: PMA_PORT        # port de MySQL
+          value: "3306"         # entre guillemets : une variable d'environnement est toujours du texte
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:       # lu dans le Secret, comme dans database-deployment.yml
+              name: wordpress-secret
+              key: ROOT_PWD
+        resources:
+          requests:
+            cpu: "50m"          # 5 % d'un CPU réservé
+            memory: "64Mi"
+          limits:
+            cpu: "500m"         # au maximum un demi-CPU
+            memory: "256Mi"
+        # Pas de "depends_on" en Kubernetes : si MySQL n'est pas encore prêt,
+        # phpMyAdmin affiche une erreur de connexion puis fonctionne dès que MySQL répond.
+---
+# ---------------------------------------------------------------------------
+# 2. Service : équivalent de "ports: 8080:80" dans Compose.
+# LoadBalancer = service destiné à être exposé hors du cluster.
+# Sur minikube, l'EXTERNAL-IP reste <pending> sans "minikube tunnel" :
+# on y accède avec un port-forward (voir README.md).
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: phpmyadmin-service
+  namespace: wordpress
+spec:
+  selector:
+    app: phpmyadmin             # envoie le trafic aux pods phpMyAdmin
+  ports:
+  - protocol: TCP
+    port: 8080                  # port exposé par le Service
+    targetPort: 80              # port du conteneur (Apache)
+  type: LoadBalancer            # exposé à l'extérieur du cluster

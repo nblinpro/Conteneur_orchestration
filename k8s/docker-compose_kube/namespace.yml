@@ -1,0 +1,12 @@
+# ---------------------------------------------------------------------------
+# Namespace : un "espace de noms" qui isole les ressources de la stack.
+# Toutes les autres ressources de ce dossier déclarent "namespace: wordpress".
+# Avantage : tout supprimer d'un coup avec
+#   minikube kubectl -- delete namespace wordpress
+# À appliquer EN PREMIER : les autres ressources ne peuvent pas être créées
+# dans un namespace qui n'existe pas encore.
+# ---------------------------------------------------------------------------
+apiVersion: v1          # version de l'API Kubernetes qui gère cet objet (v1 = objets de base)
+kind: Namespace         # type d'objet créé
+metadata:               # informations d'identification de l'objet
+  name: wordpress       # nom du namespace, réutilisé dans tous les autres fichiers

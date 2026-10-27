@@ -1,6 +1,7 @@
 # Secrets
 password.txt
 .env
+k8s/**/secret.yml
 
 # Artefacts Docker
 *.tar

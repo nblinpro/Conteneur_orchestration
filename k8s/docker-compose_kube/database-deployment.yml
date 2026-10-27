@@ -1,0 +1,117 @@
+# ===========================================================================
+# MySQL : équivalent du service "database" du docker-compose.yml.
+# Ce fichier contient 3 objets séparés par "---" :
+#   1. PersistentVolumeClaim : le disque qui garde les données
+#   2. Deployment            : le pod MySQL
+#   3. Service               : le nom DNS "database-service" pour joindre MySQL
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# 1. PersistentVolumeClaim (PVC) : demande de stockage persistant.
+# Équivalent du volume "mysql_data". Les données survivent à la suppression
+# ou au redémarrage du pod. Minikube crée le disque automatiquement.
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc               # nom du volume, référencé plus bas dans le Deployment
+  namespace: wordpress
+spec:
+  accessModes:
+  - ReadWriteOnce               # monté en lecture/écriture par un seul nœud à la fois
+  resources:
+    requests:
+      storage: 2Gi              # taille demandée : 2 Go
+---
+# ---------------------------------------------------------------------------
+# 2. Deployment : décrit les pods MySQL et les maintient en vie
+# (si le pod plante ou est supprimé, Kubernetes en recrée un).
+# ---------------------------------------------------------------------------
+apiVersion: apps/v1             # les Deployments sont dans le groupe d'API "apps"
+kind: Deployment
+metadata:
+  name: database-deployment     # nom du Deployment (kubectl get deploy)
+  namespace: wordpress
+  labels:
+    app: database               # étiquette posée sur le Deployment lui-même
+spec:
+  replicas: 1                   # un seul pod : une base MySQL ne se duplique pas comme ça
+  strategy:
+    type: Recreate              # à la mise à jour : arrêter l'ancien pod AVANT de lancer le nouveau,
+                                # car deux MySQL ne peuvent pas utiliser le même disque
+  selector:
+    matchLabels:
+      app: database             # le Deployment gère les pods qui ont l'étiquette app=database
+  template:                     # modèle des pods à créer
+    metadata:
+      labels:
+        app: database           # étiquette des pods : doit correspondre au selector ci-dessus
+                                # et au selector du Service plus bas
+    spec:
+      containers:
+      - name: mysql             # nom du conteneur dans le pod
+        image: mysql:latest     # image Docker Hub, comme dans le docker-compose
+        ports:
+        - containerPort: 3306   # port sur lequel MySQL écoute dans le conteneur
+        env:                    # variables d'environnement, comme "environment:" dans Compose
+        - name: MYSQL_ROOT_PASSWORD   # variable attendue par l'image mysql
+          valueFrom:
+            secretKeyRef:             # valeur lue dans le Secret au lieu d'être écrite ici
+              name: wordpress-secret  # nom du Secret (secret.yml)
+              key: ROOT_PWD           # clé à lire dans ce Secret
+        - name: MYSQL_DATABASE        # base créée au premier démarrage
+          valueFrom:
+            secretKeyRef:
+              name: wordpress-secret
+              key: WP_DB
+        - name: MYSQL_USER            # utilisateur créé au premier démarrage
+          valueFrom:
+            secretKeyRef:
+              name: wordpress-secret
+              key: WP_USER
+        - name: MYSQL_PASSWORD        # mot de passe de cet utilisateur
+          valueFrom:
+            secretKeyRef:
+              name: wordpress-secret
+              key: WP_PASSWORD
+        volumeMounts:
+        - name: data                  # nom du volume déclaré dans "volumes:" plus bas
+          mountPath: /var/lib/mysql   # dossier où MySQL écrit ses données
+        readinessProbe:               # test "le pod est-il prêt à recevoir du trafic ?"
+                                      # (équivalent du healthcheck de Compose)
+          exec:                       # le test exécute une commande dans le conteneur
+            command: ["sh", "-c", "mysqladmin ping -h 127.0.0.1 -u root -p\"$MYSQL_ROOT_PASSWORD\""]
+                                      # réussit seulement quand MySQL accepte des connexions
+          initialDelaySeconds: 10     # attendre 10 s après le démarrage avant le premier test
+          periodSeconds: 5            # puis tester toutes les 5 s
+        resources:                    # consommation CPU / mémoire
+          requests:                   # ressources réservées (utilisées par le scheduler et l'HPA)
+            cpu: "250m"               # 250 millicores = un quart de CPU
+            memory: "512Mi"           # 512 Mo
+          limits:                     # maximum autorisé
+            cpu: "1"                  # 1 CPU entier
+            memory: "1Gi"             # au-delà de 1 Go, le conteneur est tué (OOMKilled)
+      volumes:                        # volumes disponibles pour les conteneurs du pod
+      - name: data                    # nom interne, utilisé dans volumeMounts
+        persistentVolumeClaim:
+          claimName: mysql-pvc        # utilise le PVC défini en haut du fichier
+---
+# ---------------------------------------------------------------------------
+# 3. Service : donne une adresse stable "database-service:3306" aux pods MySQL.
+# WordPress et phpMyAdmin utilisent ce nom (WORDPRESS_DB_HOST, PMA_HOST).
+# ClusterIP = joignable seulement depuis le cluster, comme le réseau "backend"
+# de Compose : la base n'est jamais exposée à l'extérieur.
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: database-service        # nom DNS du service dans le namespace
+  namespace: wordpress
+spec:
+  selector:
+    app: database               # envoie le trafic aux pods qui ont l'étiquette app=database
+  ports:
+  - protocol: TCP
+    port: 3306                  # port du Service (celui qu'on appelle)
+    targetPort: 3306            # port du conteneur vers lequel le trafic est envoyé
+  type: ClusterIP               # interne au cluster uniquement

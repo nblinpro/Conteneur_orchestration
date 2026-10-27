@@ -1,0 +1,39 @@
+# ===========================================================================
+# Générateur de charge : un pod qui appelle WordPress en boucle pour faire
+# monter le CPU et observer l'HPA ajouter des pods.
+# Lancer  : minikube kubectl -- apply -f load-generator.yml
+# Arrêter : minikube kubectl -- delete -f load-generator.yml
+# Un Pod ne se modifie pas : pour changer ce fichier, le supprimer puis le relancer.
+# ===========================================================================
+apiVersion: v1
+kind: Pod                       # simple Pod, sans Deployment : pas recréé s'il s'arrête
+metadata:
+  name: load-generator
+  namespace: wordpress          # même namespace que wordpress-service
+spec:
+  restartPolicy: Never          # ne pas redémarrer le conteneur s'il s'arrête
+  containers:
+    - name: load-generator
+      image: busybox:1.36       # image minimale qui contient sh et wget
+      command:                  # commande lancée au démarrage (remplace celle de l'image)
+        - /bin/sh
+        - -c                    # exécuter le script qui suit
+        - |
+          # 10 boucles en parallèle pour générer plus de charge
+          for i in $(seq 1 10); do
+            (
+              while true; do
+                # requête vers le Service WordPress, réponse jetée
+                wget -q -O /dev/null http://wordpress-service
+              done
+            ) &
+          done
+          # attendre les boucles (qui ne s'arrêtent jamais)
+          wait
+      resources:
+        requests:
+          cpu: "100m"
+          memory: "32Mi"
+        limits:
+          cpu: "500m"           # plafond : limite la charge que ce pod peut générer
+          memory: "128Mi"

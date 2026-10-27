@@ -1,0 +1,132 @@
+# ===========================================================================
+# WordPress : équivalent du service "wordpress" du docker-compose.yml.
+# Ce fichier contient 4 objets :
+#   1. PersistentVolumeClaim     : le disque pour les fichiers du site
+#   2. Deployment                : les pods WordPress
+#   3. HorizontalPodAutoscaler   : ajoute ou retire des pods selon le CPU
+#   4. Service                   : l'accès depuis l'extérieur du cluster (port 80)
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# 1. PersistentVolumeClaim : équivalent du bind
+#    /home/nicolas/docker/data/wordpress_volume:/var/www/html
+# Avec minikube, un dossier de la VM n'est pas visible par le cluster :
+# on demande donc un volume géré par Kubernetes.
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wordpress-pvc           # référencé dans "volumes:" du Deployment
+  namespace: wordpress
+spec:
+  accessModes:
+  - ReadWriteOnce               # lecture/écriture depuis un seul nœud
+                                # (minikube n'a qu'un nœud : plusieurs pods peuvent le partager)
+  resources:
+    requests:
+      storage: 1Gi              # 1 Go pour les fichiers WordPress (thèmes, plugins, médias)
+---
+# ---------------------------------------------------------------------------
+# 2. Deployment
+# ---------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wordpress-deployment    # nom ciblé par l'HPA plus bas
+  namespace: wordpress
+  labels:
+    app: wordpress
+spec:
+  replicas: 1                   # nombre de pods au départ (l'HPA le modifie ensuite)
+  selector:
+    matchLabels:
+      app: wordpress            # gère les pods étiquetés app=wordpress
+  template:
+    metadata:
+      labels:
+        app: wordpress          # étiquette des pods (lien avec selector et Service)
+    spec:
+      containers:
+      - name: wordpress
+        image: wordpress:latest # même image que dans le docker-compose
+        ports:
+        - containerPort: 80     # Apache/PHP écoute sur le port 80
+        env:
+        - name: WORDPRESS_DB_HOST     # serveur MySQL
+          value: database-service     # nom du Service MySQL (remplace "database" de Compose)
+        - name: WORDPRESS_DB_NAME     # nom de la base
+          valueFrom:
+            secretKeyRef:
+              name: wordpress-secret
+              key: WP_DB
+        - name: WORDPRESS_DB_USER     # utilisateur MySQL
+          valueFrom:
+            secretKeyRef:
+              name: wordpress-secret
+              key: WP_USER
+        - name: WORDPRESS_DB_PASSWORD # mot de passe MySQL
+          valueFrom:
+            secretKeyRef:
+              name: wordpress-secret
+              key: WP_PASSWORD
+        volumeMounts:
+        - name: html                  # volume déclaré plus bas
+          mountPath: /var/www/html    # dossier du site WordPress dans le conteneur
+        resources:
+          requests:
+            cpu: "100m"         # 10 % d'un CPU réservé : base de calcul de l'HPA
+            memory: "128Mi"
+          limits:
+            cpu: "500m"         # au maximum un demi-CPU par pod
+            memory: "512Mi"
+        # Pas de "depends_on" : si MySQL n'est pas prêt, WordPress affiche
+        # "Error establishing a database connection" puis fonctionne dès que MySQL répond.
+      volumes:
+      - name: html
+        persistentVolumeClaim:
+          claimName: wordpress-pvc    # utilise le PVC défini en haut du fichier
+---
+# ---------------------------------------------------------------------------
+# 3. HorizontalPodAutoscaler (HPA) : ajuste le nombre de pods WordPress
+# selon la consommation CPU. Nécessite l'addon metrics-server :
+#   minikube addons enable metrics-server
+# ---------------------------------------------------------------------------
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: wordpress-hpa
+  namespace: wordpress
+spec:
+  scaleTargetRef:               # ressource dont l'HPA modifie le nombre de pods
+    apiVersion: apps/v1
+    kind: Deployment
+    name: wordpress-deployment
+  minReplicas: 1                # jamais moins de 1 pod
+  maxReplicas: 3                # jamais plus de 3 pods
+  metrics:
+    - type: Resource            # métrique basée sur les ressources du pod
+      resource:
+        name: cpu               # on surveille le CPU
+        target:
+          type: Utilization     # en pourcentage du "requests.cpu" (100m)
+          averageUtilization: 50  # objectif : 50 % de 100m = 50m par pod en moyenne
+                                  # au-dessus : ajout de pods ; en dessous : retrait (après ~5 min)
+---
+# ---------------------------------------------------------------------------
+# 4. Service : équivalent de "ports: 80:80" dans Compose.
+# Répartit le trafic entre tous les pods WordPress.
+# Sur minikube : accès via port-forward (voir README.md).
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: wordpress-service       # nom DNS, utilisé aussi par load-generator.yml
+  namespace: wordpress
+spec:
+  selector:
+    app: wordpress              # envoie le trafic aux pods WordPress
+  ports:
+  - protocol: TCP
+    port: 80                    # port exposé par le Service
+    targetPort: 80              # port du conteneur
+  type: LoadBalancer            # exposé à l'extérieur du cluster

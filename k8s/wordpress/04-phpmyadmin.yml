@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: phpmyadmin
+  namespace: wordpress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: phpmyadmin
+  template:
+    metadata:
+      labels:
+        app: phpmyadmin
+        net-frontend: "true"
+        net-backend: "true"
+    spec:
+      containers:
+      - name: phpmyadmin
+        image: phpmyadmin:5.2.3-apache
+        ports:
+        - containerPort: 80
+        env:
+        - name: PMA_HOST
+          value: database
+        - name: PMA_PORT
+          value: "3306"
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom: { secretKeyRef: { name: wp-secrets, key: ROOT_PWD } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: phpmyadmin-svc
+  namespace: wordpress
+spec:
+  type: LoadBalancer
+  selector:
+    app: phpmyadmin
+  ports:
+  - port: 8080
+    targetPort: 80

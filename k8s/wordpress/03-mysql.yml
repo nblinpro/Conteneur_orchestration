@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: 
+  name: db
+  namespace: wordpress
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: database
+  template:
+    metadata:
+      labels:
+        app: database
+    spec:
+      volumes:
+      - name: mysql-data
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+      containers:
+      - name: mysql
+        image: mysql:latest
+        ports:
+        - containerPort: 3306
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom: { secretKeyRef: { name: wp-secrets, key: ROOT_PWD } }
+        - name: MYSQL_DATABASE
+          valueFrom: { secretKeyRef: { name: wp-secrets, key: WP_DB } }
+        - name: MYSQL_USER
+          valueFrom: { secretKeyRef: { name: wp-secrets, key: WP_USER } }
+        - name: MYSQL_PASSWORD
+          valueFrom: { secretKeyRef: { name: wp-secrets, key: WP_PASSWORD } }
+        volumeMounts:
+        - name: mysql-data
+          mountPath: /var/lib/mysql
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: database
+  namespace: wordpress
+spec:
+  type: ClusterIP
+  selector:
+    app: database
+  ports:
+  - port: 3306
+    targetPort: 3306
+

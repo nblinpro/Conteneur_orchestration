@@ -1,0 +1,45 @@
+#regle reseau qui bloque tout
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: wordpress
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+---
+# autorisation pour accéder au pod database depuis les pods avec le label net-backend: "true"
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-network-policy
+  namespace: wordpress
+spec:
+  podSelector:
+    matchLabels:
+      app: database
+  policyTypes:
+  - Ingress
+  ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            net-backend: "true"
+      ports:
+      - port: 3306
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-network-policy
+  namespace: wordpress
+spec:
+  podSelector:
+    matchLabels:
+      net-frontend: "true"
+  policyTypes:
+  - Ingress
+  ingress:
+    - ports:
+      - port: 80

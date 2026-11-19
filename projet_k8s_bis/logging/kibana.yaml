@@ -30,9 +30,12 @@ spec:
         resources:
           requests: { cpu: 100m, memory: 512Mi, ephemeral-storage: 100Mi }
           limits:   { cpu: "1", memory: 1Gi, ephemeral-storage: 1Gi }
+        # Prêt seulement quand l'API de Kibana répond : Kibana ouvre son port bien avant
+        # d'avoir fini de démarrer (il répond alors "not ready yet"), un test TCP ne suffit pas
         readinessProbe:
-          tcpSocket: { port: 5601 }
+          httpGet: { path: /api/status, port: 5601 }
           initialDelaySeconds: 30
+          periodSeconds: 10
         livenessProbe:
           tcpSocket: { port: 5601 }
           initialDelaySeconds: 120            # Kibana démarre lentement

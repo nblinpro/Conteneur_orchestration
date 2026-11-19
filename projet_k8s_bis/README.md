@@ -160,97 +160,27 @@ Docker Hub gratuit n'autorise qu'un seul repo privé : les 5 images sont dans le
 | Clé privée du certificat HTTPS | dossier `certs/` + Secret `dotnetgigs-tls` (section 7, étape 3) | non (`.gitignore`) |
 | Clé privée age (déchiffrement) | `~/.config/sops/age/keys.txt` | **non, jamais** |
 
-Chemin du mot de passe SQL :
-`secrets.enc.yaml` (chiffré) → déchiffré par `sops exec-file` → `values.yaml` (`sqlPassword`, vide par défaut) →
-Secret `dotnetgigs-secrets` (`01-secret.yml`) → variables d'environnement des pods (`secretKeyRef`).
-
-**La clé age** : `helm/secrets.enc.yaml` est chiffré pour la clé publique écrite dans `.sops.yaml`. Pour le déchiffrer, il faut la clé privée
-correspondante dans `~/.config/sops/age/keys.txt`. Elle n'est pas dans le dépôt : un simple `git clone` ne suffit donc pas à déchiffrer.
-Elle est transmise à part, par un canal privé (scp, gestionnaire de mots de passe), aux personnes autorisées (membres du groupe, enseignant).
-Le format du fichier est montré dans [age-keys.example.txt](age-keys.example.txt) (fausse clé).
-
-Installer la clé sur une nouvelle machine (après avoir cloné le dépôt et installé sops / age, section 4) :
+Créer (ou recréer) la clé age et le fichier chiffré :
 
 ```bash
-mkdir -p ~/.config/sops/age
-nano ~/.config/sops/age/keys.txt      # coller le contenu du fichier keys.txt reçu
+# 1. Supprimer l'ancienne clé et en créer une nouvelle
+rm ~/.config/sops/age/keys.txt
+age-keygen -o ~/.config/sops/age/keys.txt
 chmod 600 ~/.config/sops/age/keys.txt
-sops decrypt helm/secrets.enc.yaml    # doit afficher : sqlPassword: ...
+
+# 2. Mettre la nouvelle clé publique dans .sops.yaml
+PUB=$(grep "public key" ~/.config/sops/age/keys.txt | awk '{print $4}')
+sed -i "s/age: .*/age: $PUB/" .sops.yaml
+grep "age:" .sops.yaml
+
+# 3. Recréer le fichier chiffré avec la nouvelle clé
+printf 'sqlPassword: Pass@word\n' > helm/secrets.enc.yaml
+sops encrypt -i helm/secrets.enc.yaml
+
+# 4. Vérifier
+head -1 helm/secrets.enc.yaml           # => sqlPassword: ENC[AES256_GCM,...]
+sops decrypt helm/secrets.enc.yaml      # => sqlPassword: Pass@word
 ```
-
-Sans la clé, `sops decrypt` répond `Failed to get the data key required to decrypt the SOPS file`.
-On peut alors installer en donnant le mot de passe à la main :
-`helm upgrade --install dotnetgigs helm/dotnetgigs -n dotnetgigs --set sqlPassword=...`
-
-### Voir et sauvegarder la clé
-
-```bash
-cat ~/.config/sops/age/keys.txt
-```
-
-Le fichier contient 3 lignes (format dans [age-keys.example.txt](age-keys.example.txt)) : la date de création, la clé **publique**
-(`# public key: age1...`, non secrète, c'est elle qui est écrite dans `.sops.yaml`) et la clé **privée** (`AGE-SECRET-KEY-1...`, secrète).
-Garder une copie de ce fichier dans un gestionnaire de mots de passe : si la clé est perdue, plus personne ne peut déchiffrer
-`secrets.enc.yaml` (il faut alors créer une nouvelle clé et recréer le fichier chiffré).
-
-### Afficher ou modifier le mot de passe
-
-Contenu du fichier une fois déchiffré : voir [helm/secrets.example.yaml](helm/secrets.example.yaml).
-
-```bash
-sops decrypt helm/secrets.enc.yaml     # afficher le contenu déchiffré
-sops edit helm/secrets.enc.yaml        # modifier (ouvre un éditeur, rechiffre à l'enregistrement)
-```
-
-Modifier le contenu **ne change pas la clé** : `sops edit` déchiffre avec la clé, puis rechiffre avec la même clé (celle de `.sops.yaml`).
-Le texte chiffré (`ENC[AES256_GCM,...]`) change à chaque modification, mais la même clé l'ouvre toujours : les personnes qui ont déjà
-la clé n'ont rien à refaire. Après une modification, relancer l'étape 4 de la section 7 pour mettre à jour le Secret dans le cluster.
-Pour le mot de passe SQL, garder `Pass@word` tant que le script de l'image n'est pas modifié (voir « Limite connue »).
-
-La clé ne change que si l'on remplace la clé publique dans `.sops.yaml` puis lance `sops updatekeys` (voir « Changer de clé »).
-Ne jamais modifier le fichier `keys.txt` à la main : une clé modifiée ne fonctionne plus.
-
-### Générer une clé (première mise en place uniquement)
-
-```bash
-mkdir -p ~/.config/sops/age
-age-keygen -o ~/.config/sops/age/keys.txt     # crée la paire de clés et affiche la clé publique age1...
-chmod 600 ~/.config/sops/age/keys.txt
-```
-
-Puis écrire cette clé publique dans `.sops.yaml` (ligne `age:`) et créer le fichier chiffré :
-`sops edit helm/secrets.enc.yaml` (sops ouvre un contenu d'exemple : le remplacer par `sqlPassword: ...`, puis enregistrer).
-
-Attention : ne pas relancer `age-keygen -o ~/.config/sops/age/keys.txt` sur une machine qui a déjà sa clé. Le fichier serait écrasé,
-et `secrets.enc.yaml`, chiffré pour l'ancienne clé, ne pourrait plus être déchiffré.
-
-### Changer de clé (par exemple si elle a fuité)
-
-À faire dans cet ordre, en gardant l'ancienne clé jusqu'à la fin :
-
-```bash
-# 1. Créer la nouvelle clé dans un AUTRE fichier (affiche sa clé publique age1...)
-age-keygen -o ~/nouvelle-cle.txt
-
-# 2. L'ajouter à côté de l'ancienne (sops sait utiliser plusieurs clés)
-cat ~/nouvelle-cle.txt >> ~/.config/sops/age/keys.txt && rm ~/nouvelle-cle.txt
-
-# 3. Dans .sops.yaml, remplacer la clé publique (ligne "age:") par la nouvelle age1...
-
-# 4. Rechiffrer le fichier pour la nouvelle clé (sops utilise l'ancienne pour l'ouvrir)
-sops updatekeys helm/secrets.enc.yaml
-
-# 5. Vérifier, puis retirer l'ancienne clé de keys.txt (ses 3 lignes, en haut du fichier)
-sops decrypt helm/secrets.enc.yaml
-```
-
-Puis commiter `.sops.yaml` et `helm/secrets.enc.yaml`, et transmettre la nouvelle clé aux personnes autorisées.
-
-### Limite connue
-
-Le mot de passe est aussi écrit en dur dans le code fourni (`appscore/Database/Dockerfile` et `SqlCmdStartup.sh`,
-qui crée les bases). Le changer côté Kubernetes casserait la création des bases : il faudrait d'abord que ce script lise la variable
-`SA_PASSWORD`, puis reconstruire l'image sql-data.
 
 ## 7. Déployer sur un cluster vierge
 

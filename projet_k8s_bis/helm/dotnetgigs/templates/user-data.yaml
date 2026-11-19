@@ -1,0 +1,45 @@
+# user-data : Redis, utilisé par identity-api pour stocker les utilisateurs.
+# ("user.data" dans le docker-compose : le point est interdit dans un nom Kubernetes)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-data
+  labels:
+    app: user-data
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: user-data
+  template:
+    metadata:
+      labels:
+        app: user-data
+        tier: data
+    spec:
+      containers:
+      - name: user-data
+        image: redis:7-alpine     # image publique : pas besoin de dockerhub-secret
+        ports:
+        - containerPort: 6379
+        # requests imposées par le sujet (4m / 500Mi) ; limite choisie par nous
+        resources:
+          requests: { cpu: 4m, memory: 500Mi, ephemeral-storage: 50Mi }
+          limits:   { cpu: 500m, memory: 1Gi, ephemeral-storage: 500Mi }
+        readinessProbe:
+          tcpSocket: { port: 6379 }
+        livenessProbe:
+          tcpSocket: { port: 6379 }
+          initialDelaySeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-data
+  labels:
+    app: user-data
+spec:
+  selector:
+    app: user-data
+  ports:
+  - port: 6379

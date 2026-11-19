@@ -1,0 +1,36 @@
+# RBAC : un compte dédié à jobs-api, avec le minimum de droits.
+#   ServiceAccount = l'identité du pod
+#   Role           = ce qui est autorisé (ici : lire les ConfigMaps, rien d'autre)
+#   RoleBinding    = donne le Role au ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: jobs-api-sa
+  labels:
+    app: jobs-api
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: jobs-api-role
+  labels:
+    app: jobs-api
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list"]          # lecture seule
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: jobs-api-rolebinding
+  labels:
+    app: jobs-api
+subjects:
+- kind: ServiceAccount
+  name: jobs-api-sa
+  namespace: {{ .Release.Namespace }}   # namespace choisi avec -n à l'installation
+roleRef:
+  kind: Role
+  name: jobs-api-role
+  apiGroup: rbac.authorization.k8s.io

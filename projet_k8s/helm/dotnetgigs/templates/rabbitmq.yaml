@@ -1,8 +1,14 @@
 # RabbitMQ : bus de messages entre les API (5672, console d'admin 15672)
+# Modèle Helm équivalent à k8s/05-rabbitmq.yml (voir ce fichier pour l'explication détaillée de chaque champ).
+# Différences avec k8s/ :
+#   - pas de "namespace:" : Helm crée les objets dans le namespace passé avec -n ;
+#   - les valeurs variables (image, réplicas, ressources...) viennent de values.yaml ;
+#   - les blocs répétitifs (labels, image, affinité) sont générés par _helpers.tpl.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: rabbitmq
+  # labels project/app/tier générés par _helpers.tpl ; nindent = retour à la ligne + indentation
   labels: {{- include "dotnetgigs.labels" (list "rabbitmq" "messaging") | nindent 4 }}
 spec:
   replicas: 1
@@ -15,11 +21,14 @@ spec:
     spec:
       containers:
       - name: rabbitmq
-        image: {{ .Values.rabbitmq.image }}
+        image: {{ .Values.rabbitmq.image }}   # image publique avec console d'administration
         ports:
-        - containerPort: 5672
-        - containerPort: 15672
+        - containerPort: 5672     # AMQP (utilisé par les API)
+        - containerPort: 15672    # console d'administration
+        # ressources lues dans values.yaml ; toYaml recopie le bloc tel quel
+        # ressources lues dans values.yaml
         resources: {{- toYaml .Values.rabbitmq.resources | nindent 10 }}
+        # readiness et liveness : le port AMQP accepte-t-il les connexions ?
         readinessProbe:
           tcpSocket: { port: 5672 }
           initialDelaySeconds: 15
@@ -29,6 +38,7 @@ spec:
           initialDelaySeconds: 60
           periodSeconds: 20
 ---
+# Service interne : les API s'y connectent via HostRabbitmq=rabbitmq (2 ports nommés)
 apiVersion: v1
 kind: Service
 metadata:

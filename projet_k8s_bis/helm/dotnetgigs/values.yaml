@@ -1,0 +1,17 @@
+# Les seules valeurs qui changent d'un cluster à l'autre.
+# Tout le reste est écrit directement dans les fichiers de templates/.
+# Pour changer une valeur sans modifier ce fichier :
+#   helm upgrade --install dotnetgigs helm/dotnetgigs -n dotnetgigs --set host=monsite.local
+
+# Repo Docker Hub privé : une image par application, différenciée par le tag
+# (ex. nicoter04/dotnetgigs_bd:web)
+image: nicoter04/dotnetgigs_bd
+
+# Nom de domaine du site (doit correspondre au certificat et au fichier hosts du PC)
+host: dotnetgigs.local
+
+# Nombre de pods de chaque API (2 = si un pod tombe, l'autre répond encore)
+apiReplicas: 2
+
+# Mot de passe SQL Server : imposé par l'image sql-data fournie par le prof
+sqlPassword: "Pass@word"

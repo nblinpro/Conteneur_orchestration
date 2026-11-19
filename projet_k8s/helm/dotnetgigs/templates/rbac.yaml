@@ -1,5 +1,6 @@
 # ServiceAccount dédié à jobs-api, avec des droits restreints (RBAC) :
 # lecture seule des ConfigMaps du namespace, rien d'autre (pas de Secrets, pas de pods...).
+# Équivalent de k8s/12-rbac.yml : ServiceAccount (identité) + Role (droits) + RoleBinding (lien).
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -15,7 +16,7 @@ metadata:
 rules:
 - apiGroups: [""]
   resources: ["configmaps"]
-  verbs: ["get", "list"]
+  verbs: ["get", "list"]          # lecture seule
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -25,7 +26,7 @@ metadata:
 subjects:
 - kind: ServiceAccount
   name: jobs-api-sa
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ .Release.Namespace }}   # namespace d'installation (-n), obligatoire pour un ServiceAccount
 roleRef:
   kind: Role
   name: jobs-api-role

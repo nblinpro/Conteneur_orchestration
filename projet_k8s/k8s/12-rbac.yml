@@ -1,13 +1,28 @@
-# ServiceAccount dédié à jobs-api, avec des droits restreints (RBAC) :
-# lecture seule des ConfigMaps du namespace, rien d'autre (pas de Secrets, pas de pods...).
+# =============================================================================
+# 12 - RBAC : ServiceAccount dédié à jobs-api, avec des droits restreints
+# =============================================================================
+# Sujet : "utiliser un ServiceAccount dédié pour au moins un des microservices,
+# avec des droits restreints (RBAC)".
+#
+# RBAC (Role-Based Access Control) se compose de 3 objets :
+#   - ServiceAccount : l'identité du pod auprès de l'API Kubernetes ;
+#   - Role           : la liste des actions permises (dans un namespace) ;
+#   - RoleBinding    : le lien "ce ServiceAccount a ce Role".
+# Droits accordés : lecture seule des ConfigMaps du namespace, rien d'autre
+# (pas de Secrets, pas de pods...). Principe du moindre privilège.
+#
+# Vérification :
+#   kubectl auth can-i get configmaps -n dotnetgigs --as=system:serviceaccount:dotnetgigs:jobs-api-sa  -> yes
+#   kubectl auth can-i list secrets   -n dotnetgigs --as=system:serviceaccount:dotnetgigs:jobs-api-sa  -> no
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: jobs-api-sa
+  name: jobs-api-sa         # référencé par serviceAccountName dans 06-jobs-api.yml
   namespace: dotnetgigs
   labels: { project: dotnetgigs, app: jobs-api, tier: backend }
 automountServiceAccountToken: false   # l'app n'appelle pas l'API Kubernetes : pas de jeton monté
 ---
+# Role : ce qui est autorisé, limité au namespace dotnetgigs
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -15,21 +30,22 @@ metadata:
   namespace: dotnetgigs
   labels: { project: dotnetgigs, app: jobs-api, tier: backend }
 rules:
-- apiGroups: [""]
-  resources: ["configmaps"]
-  verbs: ["get", "list"]
+- apiGroups: [""]                 # "" = groupe de base de l'API (pods, configmaps, secrets...)
+  resources: ["configmaps"]       # uniquement les ConfigMaps
+  verbs: ["get", "list"]          # lecture seule : pas de create / update / delete
 ---
+# RoleBinding : attribue le Role au ServiceAccount
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: jobs-api-rolebinding
   namespace: dotnetgigs
   labels: { project: dotnetgigs, app: jobs-api, tier: backend }
-subjects:
+subjects:                         # qui reçoit les droits
 - kind: ServiceAccount
   name: jobs-api-sa
   namespace: dotnetgigs
-roleRef:
+roleRef:                          # quels droits
   kind: Role
   name: jobs-api-role
   apiGroup: rbac.authorization.k8s.io

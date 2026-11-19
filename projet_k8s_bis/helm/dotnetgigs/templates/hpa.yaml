@@ -1,0 +1,24 @@
+# HPA (Horizontal Pod Autoscaler) : ajoute des pods web quand le CPU monte.
+# metrics-server mesure le CPU, l'HPA compare à la cible et ajuste le nombre de pods.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: web-hpa
+  labels:
+    app: web
+spec:
+  scaleTargetRef:           # ce que l'HPA fait varier
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web
+  minReplicas: 2
+  maxReplicas: 3
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        # Cible en millicores et non en % : la request de web est de 4m (sujet),
+        # donc un pourcentage serait toujours dépassé.
+        type: AverageValue
+        averageValue: 50m   # plus de 50m de CPU par pod en moyenne => un pod de plus

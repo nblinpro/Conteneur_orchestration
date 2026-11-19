@@ -1,39 +1,51 @@
-# Valeurs par défaut du chart dotnetgigs.
-# Surcharger à l'installation avec -f mon-fichier.yaml ou --set cle=valeur.
+# =============================================================================
+# values.yaml : valeurs par défaut du chart dotnetgigs
+# =============================================================================
+# Les modèles (templates/) lisent ces valeurs avec {{ .Values.xxx }}.
+# Pour déployer ailleurs, on ne modifie pas les modèles : on surcharge les valeurs
+# à l'installation, avec -f mon-fichier.yaml ou --set cle=valeur. Exemples :
+#   --set ingress.host=monsite.local          (autre nom de domaine)
+#   --set jobsApi.replicas=3                  (plus de pods jobs-api)
+#   --set web.hpa.enabled=false               (sans autoscaling)
 
 # Repo d'images privé (un seul repo Docker Hub, un tag par application)
+# Image finale = <repository>:<tag>, ex. nicoter04/dotnetgigs_bd:web
 image:
   repository: nicoter04/dotnetgigs_bd
-  pullPolicy: IfNotPresent
+  pullPolicy: IfNotPresent          # ne retélécharge pas une image déjà présente sur le nœud
   pullSecret: dockerhub-secret      # Secret docker-registry créé à la main (voir README)
 
 # Mot de passe SQL Server : imposé par l'image sql-data (script de création des bases)
 sql:
-  saPassword: "Pass@word"
+  saPassword: "Pass@word"           # sert aussi à construire les chaînes de connexion (templates/secret.yaml)
   storage: 2Gi                      # taille du volume persistant de SQL Server
 
 # Accès externe : HTTPS uniquement, via le contrôleur ingress (non inclus dans le chart)
 ingress:
-  className: nginx
-  host: dotnetgigs.local
+  className: nginx                  # contrôleur qui applique l'Ingress (addon ingress de minikube)
+  host: dotnetgigs.local            # nom de domaine ; doit correspondre au certificat et au fichier hosts
   tlsSecret: dotnetgigs-tls         # Secret TLS créé par scripts/gen-cert.sh
 
 # NetworkPolicies : namespace du contrôleur ingress, seul autorisé à joindre web
 networkPolicy:
-  enabled: true
+  enabled: true                     # false = aucune NetworkPolicy créée
   ingressNamespace: ingress-nginx
 
+# -----------------------------------------------------------------------------
+# Une section par application : tag de l'image, nombre de pods, ressources.
 # Ressources : valeurs imposées par le sujet pour web, les API et user-data
+# (requests = réservé, limits = maximum ; ephemeral-storage = disque temporaire).
+# -----------------------------------------------------------------------------
 web:
   tag: web
-  replicas: 2
+  replicas: 2                       # utilisé seulement si l'HPA est désactivé
   resources:
     requests: { cpu: 4m, memory: 900Mi, ephemeral-storage: 100Mi }
     limits:   { cpu: "1", memory: 2000Mi, ephemeral-storage: 1Gi }
-  hpa:
+  hpa:                              # autoscaling de web selon le CPU
     enabled: true
     minReplicas: 2
-    maxReplicas: 3
+    maxReplicas: 3                  # limité par la mémoire du cluster (900Mi réservés par pod)
     averageCpu: 50m                 # valeur absolue : la request de 4m rend un % inutilisable
 
 jobsApi:
@@ -57,18 +69,21 @@ identityApi:
     requests: { cpu: 500m, memory: 500Mi, ephemeral-storage: 100Mi }
     limits:   { cpu: "1", memory: 1500Mi, ephemeral-storage: 1Gi }
 
+# Pas de valeurs imposées par le sujet : SQL Server exige au moins 2 Go de RAM
 sqlData:
   tag: sql-data
   resources:
     requests: { cpu: 500m, memory: 2Gi, ephemeral-storage: 100Mi }
     limits:   { cpu: "2", memory: 3Gi, ephemeral-storage: 1Gi }
 
+# Redis : image publique (pas le repo privé). Requests imposées, limite choisie par nous.
 userData:
   image: redis:7-alpine
   resources:
     requests: { cpu: 4m, memory: 500Mi, ephemeral-storage: 50Mi }
     limits:   { cpu: 500m, memory: 1Gi, ephemeral-storage: 500Mi }
 
+# RabbitMQ : image publique avec console d'administration. Valeurs choisies par nous.
 rabbitmq:
   image: rabbitmq:3-management
   resources:

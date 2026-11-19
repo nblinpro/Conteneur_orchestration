@@ -1,4 +1,11 @@
-# RabbitMQ : bus de messages entre les API (port 5672, console d'admin 15672).
+# =============================================================================
+# 05 - RABBITMQ : bus de messages
+# =============================================================================
+# Les 3 API s'échangent des événements via RabbitMQ : quand un candidat postule,
+# jobs-api publie un message "ApplicantAppliedEvent" que applicants-api et
+# identity-api reçoivent (bibliothèque MassTransit dans le code .NET).
+# Ports : 5672 = protocole AMQP (utilisé par les API), 15672 = console web d'admin.
+# Image publique officielle, variante "management" qui inclut la console web.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,20 +25,25 @@ spec:
       - name: rabbitmq
         image: rabbitmq:3-management
         ports:
-        - containerPort: 5672
-        - containerPort: 15672
+        - containerPort: 5672     # AMQP
+        - containerPort: 15672    # console d'administration
+        # Pas de valeurs imposées par le sujet : valeurs modestes mais suffisantes
         resources:
           requests: { cpu: 100m, memory: 256Mi, ephemeral-storage: 100Mi }
           limits:   { cpu: 500m, memory: 512Mi, ephemeral-storage: 1Gi }
+        # Prêt quand le port AMQP accepte les connexions
         readinessProbe:
           tcpSocket: { port: 5672 }
           initialDelaySeconds: 15
           periodSeconds: 10
+        # Redémarré si le port AMQP ne répond plus (démarrage lent : 60 s de marge)
         livenessProbe:
           tcpSocket: { port: 5672 }
           initialDelaySeconds: 60
           periodSeconds: 20
 ---
+# Service interne : les API s'y connectent via HostRabbitmq=rabbitmq.
+# Quand un Service a plusieurs ports, chacun doit porter un nom.
 apiVersion: v1
 kind: Service
 metadata:

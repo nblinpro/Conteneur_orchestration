@@ -1,6 +1,17 @@
-apiVersion: v2
-name: dotnetgigs
+# =============================================================================
+# Chart.yaml : carte d'identité du chart Helm
+# =============================================================================
+# Un chart Helm est un "paquet" Kubernetes : des modèles de manifestes
+# (dossier templates/) + des valeurs par défaut (values.yaml).
+# Helm remplace les {{ ... }} des modèles par les valeurs, puis applique le tout
+# dans le cluster en une seule commande :
+#   helm upgrade --install dotnetgigs helm/dotnetgigs -n dotnetgigs
+#
+# Le chart contient tout ce que crée k8s/ (Deployments, Services, Ingress, HPA,
+# NetworkPolicies, RBAC, Secret, PVC), mais PAS le contrôleur d'ingress (exigence du sujet).
+apiVersion: v2              # format de chart Helm 3 et plus
+name: dotnetgigs            # nom du chart
 description: Application dotnetgigs (web MVC + 3 API REST + SQL Server + Redis + RabbitMQ) avec Ingress HTTPS, HPA, NetworkPolicies et RBAC.
-type: application
+type: application           # chart qui déploie une application (et non une bibliothèque de modèles)
 version: 1.0.0        # version du chart
 appVersion: "1.0"     # version de l'application

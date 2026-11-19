@@ -1,6 +1,15 @@
-# Seul point d'entrée externe : https://dotnetgigs.local -> Service web.
-# Le contrôleur ingress-nginx (addon minikube) n'est pas dans ce fichier.
+# =============================================================================
+# 10 - INGRESS : seul point d'entrée externe, en HTTPS
+# =============================================================================
+# Un Ingress est une règle de routage HTTP(S) : "les requêtes pour tel nom de
+# domaine vont vers tel Service". Il est appliqué par un contrôleur d'ingress
+# (ici ingress-nginx, activé par "minikube addons enable ingress").
+# Le contrôleur n'est PAS dans ce projet (exigence du sujet pour le chart Helm).
+#
+#   navigateur --HTTPS--> contrôleur ingress-nginx --HTTP--> Service web --> pods web
+#
 # Le certificat vient du Secret TLS "dotnetgigs-tls" (scripts/gen-cert.sh).
+# Côté PC, dotnetgigs.local doit pointer vers la VM (fichier hosts).
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -8,21 +17,23 @@ metadata:
   namespace: dotnetgigs
   labels: { project: dotnetgigs, app: web, tier: frontend }
   annotations:
+    # Sujet : accès externe uniquement en HTTPS. Toute requête HTTP reçoit une
+    # redirection 308 vers https://
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"   # HTTP -> redirection vers HTTPS
 spec:
-  ingressClassName: nginx
+  ingressClassName: nginx   # quel contrôleur doit appliquer cet Ingress
   tls:
   - hosts:
     - dotnetgigs.local
-    secretName: dotnetgigs-tls
+    secretName: dotnetgigs-tls    # Secret contenant tls.crt + tls.key (certificat auto-signé)
   rules:
-  - host: dotnetgigs.local
+  - host: dotnetgigs.local        # nom de domaine demandé par le navigateur
     http:
       paths:
-      - path: /
+      - path: /                   # toutes les URL du site...
         pathType: Prefix
         backend:
           service:
-            name: web
+            name: web             # ... sont envoyées au Service web, port 80
             port:
               number: 80

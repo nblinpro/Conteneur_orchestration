@@ -1,11 +1,17 @@
 # applicants.api : API des candidats (SQL Server + RabbitMQ)
+# Modèle Helm équivalent à k8s/07-applicants-api.yml (voir ce fichier pour l'explication détaillée de chaque champ).
+# Différences avec k8s/ :
+#   - pas de "namespace:" : Helm crée les objets dans le namespace passé avec -n ;
+#   - les valeurs variables (image, réplicas, ressources...) viennent de values.yaml ;
+#   - les blocs répétitifs (labels, image, affinité) sont générés par _helpers.tpl.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: applicants-api
+  # labels project/app/tier générés par _helpers.tpl ; nindent = retour à la ligne + indentation
   labels: {{- include "dotnetgigs.labels" (list "applicants-api" "backend") | nindent 4 }}
 spec:
-  replicas: {{ .Values.applicantsApi.replicas }}
+  replicas: {{ .Values.applicantsApi.replicas }}   # 2 par défaut (haute disponibilité)
   selector:
     matchLabels:
       app: applicants-api
@@ -13,23 +19,27 @@ spec:
     metadata:
       labels: {{- include "dotnetgigs.labels" (list "applicants-api" "backend") | nindent 8 }}
     spec:
+      # affinité imposée par le sujet : applicants.api => sql.data (même nœud si possible)
       {{- include "dotnetgigs.affinity" (list "sql-data") | nindent 6 }}
-      imagePullSecrets:
+      imagePullSecrets:          # identifiants Docker Hub (repo privé), nom lu dans values.yaml
       - name: {{ .Values.image.pullSecret }}
       containers:
       - name: applicants-api
+        # image = <image.repository>:<tag>, ex. nicoter04/dotnetgigs_bd:jobs-api
         image: {{ include "dotnetgigs.image" (list $ .Values.applicantsApi.tag) }}
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         ports:
         - containerPort: 80
         env:
-        - name: ConnectionString
+        - name: ConnectionString        # chaîne de connexion SQL, lue dans le Secret (secret.yaml)
           valueFrom: { secretKeyRef: { name: dotnetgigs-secrets, key: APPLICANTS_CONNECTION } }
         - name: HostRabbitmq
           value: rabbitmq
         - name: Logging__Console__LogLevel__Default
           value: Information
+        # ressources lues dans values.yaml ; toYaml recopie le bloc tel quel
         resources: {{- toYaml .Values.applicantsApi.resources | nindent 10 }}
+        # readiness : prêt à recevoir du trafic ; liveness : redémarrage si plus de réponse
         readinessProbe:
           httpGet: { path: /api/applicants, port: 80 }
           initialDelaySeconds: 10
@@ -39,6 +49,7 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 20
 ---
+# Service interne ClusterIP (non exposé à l'extérieur)
 apiVersion: v1
 kind: Service
 metadata:

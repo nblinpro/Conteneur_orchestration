@@ -1,15 +1,22 @@
 # SQL Server + script de création des bases dotnetgigs.jobs et dotnetgigs.applicants
+# Modèle Helm équivalent à k8s/03-sql-data.yml (voir ce fichier pour l'explication détaillée de chaque champ).
+# Différences avec k8s/ :
+#   - pas de "namespace:" : Helm crée les objets dans le namespace passé avec -n ;
+#   - les valeurs variables (image, réplicas, ressources...) viennent de values.yaml ;
+#   - les blocs répétitifs (labels, image, affinité) sont générés par _helpers.tpl.
+# Volume persistant des bases (créé automatiquement par la StorageClass par défaut du cluster)
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: sql-data-pvc
+  # labels project/app/tier générés par _helpers.tpl ; nindent = retour à la ligne + indentation
   labels: {{- include "dotnetgigs.labels" (list "sql-data" "data") | nindent 4 }}
 spec:
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: {{ .Values.sql.storage }}
+      storage: {{ .Values.sql.storage }}   # 2Gi par défaut (values.yaml)
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -17,7 +24,7 @@ metadata:
   name: sql-data
   labels: {{- include "dotnetgigs.labels" (list "sql-data" "data") | nindent 4 }}
 spec:
-  replicas: 1
+  replicas: 1               # base de données : un seul pod
   strategy:
     type: Recreate          # l'ancien pod libère le volume avant le démarrage du nouveau
   selector:
@@ -31,7 +38,7 @@ spec:
       - name: data
         persistentVolumeClaim:
           claimName: sql-data-pvc
-      imagePullSecrets:
+      imagePullSecrets:          # identifiants Docker Hub (repo privé)
       - name: {{ .Values.image.pullSecret }}
       containers:
       - name: sql-data
@@ -42,12 +49,15 @@ spec:
         env:
         - name: ACCEPT_EULA
           value: "Y"
-        - name: SA_PASSWORD
+        - name: SA_PASSWORD             # lu dans le Secret (secret.yaml)
           valueFrom: { secretKeyRef: { name: dotnetgigs-secrets, key: SA_PASSWORD } }
         volumeMounts:
         - name: data
-          mountPath: /var/opt/mssql
+          mountPath: /var/opt/mssql   # dossier des fichiers de bases SQL Server
+        # ressources lues dans values.yaml ; toYaml recopie le bloc tel quel
+        # ressources lues dans values.yaml ; toYaml recopie le bloc tel quel
         resources: {{- toYaml .Values.sqlData.resources | nindent 10 }}
+        # readiness : port 1433 ouvert ; liveness : redémarrage si plus de réponse (1 min de marge au démarrage)
         readinessProbe:
           tcpSocket: { port: 1433 }
           initialDelaySeconds: 20
@@ -57,6 +67,7 @@ spec:
           initialDelaySeconds: 60
           periodSeconds: 20
 ---
+# Service interne : les API s'y connectent avec Server=sql-data
 apiVersion: v1
 kind: Service
 metadata:

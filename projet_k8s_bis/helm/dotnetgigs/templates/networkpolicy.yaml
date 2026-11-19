@@ -1,0 +1,35 @@
+# NetworkPolicy : pare-feu entre les pods.
+# Sans NetworkPolicy, tous les pods peuvent se parler. Dès qu'une NetworkPolicy
+# sélectionne un pod, seul le trafic qu'elle autorise peut entrer dans ce pod.
+
+# 1. Seules les API jobs-api et applicants-api peuvent parler à sql-data
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sql-data-from-api
+spec:
+  podSelector:
+    matchLabels: { app: sql-data }          # pods protégés
+  ingress:
+  - from:                                   # pods autorisés à entrer
+    - podSelector:
+        matchLabels: { app: jobs-api }
+    - podSelector:
+        matchLabels: { app: applicants-api }
+    ports:
+    - port: 1433
+---
+# 2. Seul web peut appeler identity-api
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: identity-api-from-web
+spec:
+  podSelector:
+    matchLabels: { app: identity-api }
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels: { app: web }
+    ports:
+    - port: 80

@@ -22,11 +22,12 @@ spec:
         ports:
         - containerPort: 5601
         env:
-        - name: ELASTICSEARCH_HOSTS
+        - name: ELASTICSEARCH_HOSTS       # adresse du Service Elasticsearch (même namespace)
           value: http://elasticsearch:9200
-        resources:
+        resources:                         # limites comme pour tous les pods
           requests: { cpu: 100m, memory: 512Mi, ephemeral-storage: 100Mi }
           limits:   { cpu: "1", memory: 1Gi, ephemeral-storage: 1Gi }
+        # readiness : l'API /api/status répond ; liveness : port ouvert (Kibana démarre lentement : 2 min)
         readinessProbe:
           httpGet: { path: /api/status, port: 5601 }
           initialDelaySeconds: 30
@@ -36,6 +37,7 @@ spec:
           initialDelaySeconds: 120
           periodSeconds: 20
 ---
+# Service interne : accès depuis le PC par port-forward (voir en haut du fichier)
 apiVersion: v1
 kind: Service
 metadata:

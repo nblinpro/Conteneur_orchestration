@@ -11,9 +11,13 @@
 #   - kube-state-metrics         : état du cluster (pods, deployments, HPA, nœuds...)
 #   - node-exporter              : ressources des nœuds (CPU, RAM, disque)
 
+# Serveur Prometheus : collecte (scrape) les métriques toutes les minutes et les stocke.
+# Accès : kubectl port-forward --address 0.0.0.0 -n monitoring svc/prometheus-server 9090:80
+# Limite connue : sur minikube, scheduler / controller-manager / etcd n'écoutent que sur
+# localhost ; les métriques du plan de contrôle viennent donc de l'apiserver.
 server:
   retention: "2d"                # 2 jours d'historique suffisent pour le projet
-  persistentVolume:
+  persistentVolume:              # les métriques survivent à un redémarrage du pod
     enabled: true
     size: 2Gi
   resources:
@@ -26,12 +30,15 @@ alertmanager:
 prometheus-pushgateway:
   enabled: false
 
+# kube-state-metrics : traduit l'état des objets Kubernetes en métriques
+# (pods Running/Pending, réplicas des Deployments, HPA, redémarrages...)
 kube-state-metrics:
   enabled: true
   resources:
     requests: { cpu: 10m, memory: 32Mi }
     limits:   { cpu: 100m, memory: 128Mi }
 
+# node-exporter : un pod par nœud (DaemonSet), métriques matérielles du nœud
 prometheus-node-exporter:
   enabled: true
   resources:

@@ -1,8 +1,14 @@
 # Redis : stockage des utilisateurs pour identity-api
+# Modèle Helm équivalent à k8s/04-user-data.yml (voir ce fichier pour l'explication détaillée de chaque champ).
+# Différences avec k8s/ :
+#   - pas de "namespace:" : Helm crée les objets dans le namespace passé avec -n ;
+#   - les valeurs variables (image, réplicas, ressources...) viennent de values.yaml ;
+#   - les blocs répétitifs (labels, image, affinité) sont générés par _helpers.tpl.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: user-data
+  # labels project/app/tier générés par _helpers.tpl ; nindent = retour à la ligne + indentation
   labels: {{- include "dotnetgigs.labels" (list "user-data" "data") | nindent 4 }}
 spec:
   replicas: 1
@@ -15,10 +21,13 @@ spec:
     spec:
       containers:
       - name: user-data
-        image: {{ .Values.userData.image }}
+        image: {{ .Values.userData.image }}   # image publique redis:7-alpine
         ports:
         - containerPort: 6379
+        # ressources lues dans values.yaml ; toYaml recopie le bloc tel quel
+        # ressources lues dans values.yaml (requests imposées par le sujet)
         resources: {{- toYaml .Values.userData.resources | nindent 10 }}
+        # readiness : redis-cli ping répond PONG ; liveness : port 6379 ouvert
         readinessProbe:
           exec: { command: ["redis-cli", "ping"] }
           periodSeconds: 10
@@ -27,6 +36,7 @@ spec:
           initialDelaySeconds: 10
           periodSeconds: 20
 ---
+# Service interne : identity-api s'y connecte via RedisHost=user-data:6379
 apiVersion: v1
 kind: Service
 metadata:

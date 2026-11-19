@@ -1,53 +1,78 @@
-# SQL Server + script de création des bases dotnetgigs.jobs et dotnetgigs.applicants.
+# =============================================================================
+# 03 - SQL-DATA : base de données SQL Server
+# =============================================================================
+# Image construite depuis appscore/Database/Dockerfile : SQL Server + un script
+# qui crée les bases dotnetgigs.jobs et dotnetgigs.applicants au démarrage.
+# Utilisée par : jobs-api et applicants-api (port 1433).
+#
+# Ce fichier contient 2 objets séparés par "---" :
+#   1. Deployment : décrit le pod à faire tourner et le maintient en vie ;
+#   2. Service    : donne un nom DNS stable ("sql-data") pour joindre le pod.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: sql-data
   namespace: dotnetgigs
+  # Étiquettes (exigées par le sujet pour organiser les éléments) :
+  #   project = le projet, app = l'application, tier = la couche (data/backend/frontend)
   labels: { project: dotnetgigs, app: sql-data, tier: data }
 spec:
-  replicas: 1
+  replicas: 1               # une base SQL ne se duplique pas simplement : 1 seul pod
   strategy:
-    type: Recreate
+    type: Recreate          # lors d'une mise à jour, l'ancien pod est arrêté AVANT de créer
+                            # le nouveau : le volume ReadWriteOnce ne peut pas être monté deux fois
   selector:
     matchLabels:
-      app: sql-data
-  template:
+      app: sql-data         # le Deployment gère les pods qui portent ce label
+  template:                 # modèle des pods créés par le Deployment
     metadata:
       labels: { project: dotnetgigs, app: sql-data, tier: data }
     spec:
       volumes:
-      - name: data
+      - name: data          # le volume persistant demandé dans 02-storage.yml
         persistentVolumeClaim:
           claimName: sql-data-pvc
-      imagePullSecrets:          # identifiants Docker Hub (repo privé)
+      imagePullSecrets:          # identifiants Docker Hub (repo privé), Secret créé à la main (README 5.1)
       - name: dockerhub-secret
       containers:
       - name: sql-data
-        image: nicoter04/dotnetgigs_bd:sql-data
-        imagePullPolicy: IfNotPresent
+        image: nicoter04/dotnetgigs_bd:sql-data   # repo privé : un seul repo, un tag par application
+        imagePullPolicy: IfNotPresent             # ne retélécharge pas l'image si elle est déjà sur le nœud
         ports:
-        - containerPort: 1433
+        - containerPort: 1433                     # port standard de SQL Server
         env:
-        - name: ACCEPT_EULA
+        - name: ACCEPT_EULA                       # obligatoire pour démarrer l'image SQL Server de Microsoft
           value: "Y"
-        - name: SA_PASSWORD
+        - name: SA_PASSWORD                       # lu dans le Secret (01-secret.yml), pas écrit en clair ici
           valueFrom: { secretKeyRef: { name: dotnetgigs-secrets, key: SA_PASSWORD } }
         volumeMounts:
         - name: data
-          mountPath: /var/opt/mssql
+          mountPath: /var/opt/mssql               # dossier où SQL Server range ses fichiers de bases
+        # Ressources (sujet, partie Performance) :
+        #   requests = réservé pour le pod (sert au scheduler pour choisir un nœud) ;
+        #   limits   = maximum autorisé (CPU bridé au-delà, pod tué si dépassement mémoire/disque).
+        # SQL Server n'a pas de valeurs imposées : il exige au moins 2 Go de RAM pour démarrer.
+        # ephemeral-storage = disque temporaire du conteneur (logs, fichiers temporaires).
         resources:
           requests: { cpu: 500m, memory: 2Gi, ephemeral-storage: 100Mi }
           limits:   { cpu: "2", memory: 3Gi, ephemeral-storage: 1Gi }
+        # Sonde de préparation (readiness) : tant qu'elle échoue, le pod ne reçoit pas de trafic
+        # du Service. Ici : le port 1433 accepte-t-il les connexions ?
         readinessProbe:
           tcpSocket: { port: 1433 }
-          initialDelaySeconds: 20
-          periodSeconds: 10
+          initialDelaySeconds: 20   # attend 20 s après le démarrage avant le premier test
+          periodSeconds: 10         # puis teste toutes les 10 s
+        # Sonde de vivacité (liveness) : si elle échoue plusieurs fois, Kubernetes redémarre
+        # le conteneur (exigence "les pods redémarrent automatiquement s'ils tombent").
         livenessProbe:
           tcpSocket: { port: 1433 }
-          initialDelaySeconds: 60
+          initialDelaySeconds: 60   # SQL Server met du temps à démarrer : on lui laisse 1 min
           periodSeconds: 20
 ---
+# Service ClusterIP : adresse IP et nom DNS internes au cluster ("sql-data").
+# Les API s'y connectent avec "Server=sql-data" (voir 01-secret.yml).
+# ClusterIP = non accessible depuis l'extérieur du cluster (sujet : seules les apps
+# appelées de l'extérieur doivent être exposées).
 apiVersion: v1
 kind: Service
 metadata:
@@ -57,7 +82,7 @@ metadata:
 spec:
   type: ClusterIP
   selector:
-    app: sql-data
+    app: sql-data           # envoie le trafic vers les pods ayant ce label
   ports:
-  - port: 1433
-    targetPort: 1433
+  - port: 1433              # port du Service
+    targetPort: 1433        # port du conteneur

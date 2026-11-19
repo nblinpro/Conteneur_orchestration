@@ -1,12 +1,17 @@
-# identity.api : API des utilisateurs (Redis + RabbitMQ).
+# =============================================================================
+# 08 - IDENTITY-API : API REST d'authentification
+# =============================================================================
+# Application ASP.NET Core (appscore/Services/Identity.Api).
+# Dépendances : user-data (Redis) et rabbitmq.
+# Appelée par : web (connexion / profil utilisateur).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: identity-api
+  name: identity-api        # "identity.api" dans le docker-compose
   namespace: dotnetgigs
   labels: { project: dotnetgigs, app: identity-api, tier: backend }
 spec:
-  replicas: 2
+  replicas: 2               # haute disponibilité
   selector:
     matchLabels:
       app: identity-api
@@ -14,6 +19,7 @@ spec:
     metadata:
       labels: { project: dotnetgigs, app: identity-api, tier: backend }
     spec:
+      # Affinité imposée par le sujet : identity.api => user.data (même nœud que Redis si possible)
       affinity:
         podAffinity:              # au plus près de Redis
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -31,15 +37,17 @@ spec:
         ports:
         - containerPort: 80
         env:
-        - name: RedisHost
+        - name: RedisHost               # adresse de Redis = Service user-data (04), port 6379
           value: user-data:6379
         - name: HostRabbitmq
           value: rabbitmq
         - name: Logging__Console__LogLevel__Default
           value: Information
+        # Ressources imposées par le sujet : request 0.5 CPU / 500Mi, limit 1 CPU / 1500Mi
         resources:
           requests: { cpu: 500m, memory: 500Mi, ephemeral-storage: 100Mi }
           limits:   { cpu: "1", memory: 1500Mi, ephemeral-storage: 1Gi }
+        # Sondes TCP : le conteneur est prêt / vivant dès que le port 80 accepte les connexions
         readinessProbe:
           tcpSocket: { port: 80 }
           initialDelaySeconds: 10
@@ -49,6 +57,7 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 20
 ---
+# Service interne : web l'appelle via http://identity-api (ApiSettings__IdentityApiUrl)
 apiVersion: v1
 kind: Service
 metadata:

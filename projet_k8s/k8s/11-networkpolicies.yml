@@ -1,8 +1,20 @@
-# Règles réseau : tout est bloqué par défaut, puis on autorise uniquement les liens nécessaires.
+# =============================================================================
+# 11 - NETWORKPOLICIES : pare-feu entre les pods
+# =============================================================================
+# Par défaut, dans Kubernetes, tous les pods peuvent parler à tous les pods.
+# Une NetworkPolicy restreint le trafic ENTRANT (Ingress) vers les pods qu'elle
+# sélectionne. Principe appliqué ici : tout est bloqué par défaut, puis on
+# autorise uniquement les liens nécessaires.
 #   ingress-nginx -> web -> identity-api / jobs-api / applicants-api
 #   jobs-api, applicants-api -> sql-data
 #   identity-api -> user-data
 #   les 3 API -> rabbitmq
+#
+# Les règles s'appuient sur les labels "app" des pods : un pod sans le bon label
+# est bloqué. Le plugin réseau de minikube (kindnet) applique bien ces règles.
+# Test : un pod de test sans label autorisé n'arrive pas à joindre web :
+#   kubectl run test --rm -it --image=curlimages/curl:8.11.1 -n dotnetgigs -- curl -m 5 http://web
+#   -> timeout (bloqué), alors que le site fonctionne via l'Ingress.
 
 # Bloque tout trafic entrant vers les pods du namespace
 apiVersion: networking.k8s.io/v1
@@ -11,9 +23,9 @@ metadata:
   name: default-deny-ingress
   namespace: dotnetgigs
 spec:
-  podSelector: {}
+  podSelector: {}           # {} = tous les pods du namespace
   policyTypes:
-  - Ingress
+  - Ingress                 # aucune règle "ingress:" listée => rien n'est autorisé en entrée
 ---
 # web : joignable uniquement par le contrôleur ingress (namespace ingress-nginx)
 apiVersion: networking.k8s.io/v1
@@ -23,15 +35,15 @@ metadata:
   namespace: dotnetgigs
 spec:
   podSelector:
-    matchLabels: { app: web }
+    matchLabels: { app: web }       # s'applique aux pods web
   policyTypes:
   - Ingress
   ingress:
   - from:
-    - namespaceSelector:
-        matchLabels: { kubernetes.io/metadata.name: ingress-nginx }
+    - namespaceSelector:            # autorise tous les pods du namespace ingress-nginx
+        matchLabels: { kubernetes.io/metadata.name: ingress-nginx }   # label posé automatiquement sur chaque namespace
     ports:
-    - port: 80
+    - port: 80                      # et uniquement sur le port 80
 ---
 # Les 3 API : joignables uniquement par web
 apiVersion: networking.k8s.io/v1
@@ -40,14 +52,14 @@ metadata:
   name: api-from-web
   namespace: dotnetgigs
 spec:
-  podSelector:
+  podSelector:                      # s'applique aux pods dont le label app vaut l'une de ces valeurs
     matchExpressions:
     - { key: app, operator: In, values: [identity-api, jobs-api, applicants-api] }
   policyTypes:
   - Ingress
   ingress:
   - from:
-    - podSelector:
+    - podSelector:                  # source autorisée : les pods web du même namespace
         matchLabels: { app: web }
     ports:
     - port: 80
@@ -69,7 +81,7 @@ spec:
         matchExpressions:
         - { key: app, operator: In, values: [jobs-api, applicants-api] }
     ports:
-    - port: 1433
+    - port: 1433                    # port SQL Server
 ---
 # user-data (Redis) : joignable uniquement par identity-api
 apiVersion: networking.k8s.io/v1
@@ -87,7 +99,7 @@ spec:
     - podSelector:
         matchLabels: { app: identity-api }
     ports:
-    - port: 6379
+    - port: 6379                    # port Redis
 ---
 # rabbitmq : joignable uniquement par les 3 API
 apiVersion: networking.k8s.io/v1
@@ -106,4 +118,4 @@ spec:
         matchExpressions:
         - { key: app, operator: In, values: [identity-api, jobs-api, applicants-api] }
     ports:
-    - port: 5672
+    - port: 5672                    # AMQP uniquement (la console 15672 reste fermée)

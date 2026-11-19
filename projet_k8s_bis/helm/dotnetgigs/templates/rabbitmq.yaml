@@ -1,0 +1,45 @@
+# rabbitmq : bus de messages entre les 3 API (port 5672).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  labels:
+    app: rabbitmq
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+        tier: messaging
+    spec:
+      containers:
+      - name: rabbitmq
+        image: rabbitmq:3-management   # image publique
+        ports:
+        - containerPort: 5672
+        # pas de valeur imposée par le sujet
+        resources:
+          requests: { cpu: 100m, memory: 256Mi, ephemeral-storage: 100Mi }
+          limits:   { cpu: 500m, memory: 512Mi, ephemeral-storage: 1Gi }
+        readinessProbe:
+          tcpSocket: { port: 5672 }
+          initialDelaySeconds: 15
+        livenessProbe:
+          tcpSocket: { port: 5672 }
+          initialDelaySeconds: 60    # RabbitMQ démarre lentement
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  labels:
+    app: rabbitmq
+spec:
+  selector:
+    app: rabbitmq
+  ports:
+  - port: 5672

@@ -1,5 +1,7 @@
 # Seul point d'entrée externe : https://<host> -> Service web.
 # Le contrôleur ingress n'est pas dans le chart (addon minikube ou installation séparée).
+# Équivalent de k8s/10-ingress.yml ; le nom de domaine, la classe et le Secret TLS
+# viennent de values.yaml (section ingress), pour pouvoir changer de domaine avec --set.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -12,7 +14,7 @@ spec:
   tls:
   - hosts:
     - {{ .Values.ingress.host }}
-    secretName: {{ .Values.ingress.tlsSecret }}
+    secretName: {{ .Values.ingress.tlsSecret }}   # certificat auto-signé (scripts/gen-cert.sh)
   rules:
   - host: {{ .Values.ingress.host }}
     http:
@@ -21,6 +23,6 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: web
+            name: web             # toutes les URL vont vers le Service web, port 80
             port:
               number: 80

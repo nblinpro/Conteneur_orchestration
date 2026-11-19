@@ -1,11 +1,13 @@
 # Elasticsearch : stockage et indexation des logs (1 nœud, sans sécurité : cluster de TP).
 # Installation : kubectl apply -f logging/elasticsearch.yaml
+# Namespace séparé pour la pile de logs (EFK = Elasticsearch + Fluent Bit + Kibana)
 apiVersion: v1
 kind: Namespace
 metadata:
   name: logging
   labels: { project: dotnetgigs }
 ---
+# Volume persistant : les logs indexés survivent à un redémarrage du pod
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -17,7 +19,7 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 5Gi
+      storage: 5Gi          # quelques jours de logs du projet
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -28,7 +30,7 @@ metadata:
 spec:
   replicas: 1
   strategy:
-    type: Recreate
+    type: Recreate          # un seul pod à la fois sur le volume ReadWriteOnce
   selector:
     matchLabels:
       app: elasticsearch
@@ -49,7 +51,7 @@ spec:
       - name: elasticsearch
         image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
         ports:
-        - containerPort: 9200
+        - containerPort: 9200     # API REST d'Elasticsearch (utilisée par Fluent Bit et Kibana)
         env:
         - name: discovery.type
           value: single-node             # 1 seul nœud, pas de cluster
@@ -60,9 +62,11 @@ spec:
         volumeMounts:
         - name: data
           mountPath: /usr/share/elasticsearch/data
+        # Elasticsearch (Java) a besoin d'environ 1 Go : heap de 512 Mo + mémoire hors heap
         resources:
           requests: { cpu: 250m, memory: 1Gi, ephemeral-storage: 100Mi }
           limits:   { cpu: "1", memory: 1536Mi, ephemeral-storage: 1Gi }
+        # readiness : l'API répond sur /_cluster/health ; liveness : port 9200 ouvert
         readinessProbe:
           httpGet: { path: /_cluster/health, port: 9200 }
           initialDelaySeconds: 20
@@ -76,6 +80,7 @@ spec:
         persistentVolumeClaim:
           claimName: elasticsearch-pvc
 ---
+# Service interne : elasticsearch.logging.svc.cluster.local:9200
 apiVersion: v1
 kind: Service
 metadata:

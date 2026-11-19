@@ -5,12 +5,18 @@
 #   helm upgrade --install fluent-bit fluent/fluent-bit --version 0.58.3 \
 #     -n logging -f logging/fluent-bit-values.yaml
 
+# Ressources du pod Fluent Bit (léger)
 resources:
   requests: { cpu: 20m, memory: 64Mi }
   limits:   { cpu: 200m, memory: 128Mi }
 
 config:
   # Lecture des fichiers de logs des conteneurs du namespace dotnetgigs uniquement
+  #   tail             : lit les fichiers en continu, comme "tail -f"
+  #   Path             : un fichier par conteneur, nommé <pod>_<namespace>_<conteneur>-<id>.log
+  #   multiline.parser : décode le format des logs de containerd (cri) ou docker
+  #   Tag              : étiquette des enregistrements, utilisée par les "Match" plus bas
+  #   Mem_Buf_Limit    : mémoire tampon maximale si Elasticsearch est lent
   inputs: |
     [INPUT]
         Name tail
@@ -55,6 +61,9 @@ config:
         rule          "cont"         "/^\s+/"  "cont"
 
   # Envoi vers Elasticsearch, un index par jour : dotnetgigs-AAAA.MM.JJ
+  #   Logstash_Format    : index daté (un par jour) ; Suppress_Type_Name : requis par ES 8
+  #   Replace_Dots       : remplace les points des labels (app.kubernetes.io/...) par des _
+  #   Retry_Limit        : 5 nouvelles tentatives si Elasticsearch ne répond pas
   outputs: |
     [OUTPUT]
         Name es

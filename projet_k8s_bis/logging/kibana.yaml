@@ -1,0 +1,49 @@
+# Kibana : le site web pour chercher dans les logs et faire des dashboards.
+# Installation : kubectl apply -f logging/kibana.yaml
+# Accès        : kubectl port-forward --address 0.0.0.0 -n logging svc/kibana 5601:5601
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: logging
+  labels:
+    app: kibana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kibana
+  template:
+    metadata:
+      labels:
+        app: kibana
+        tier: logging
+    spec:
+      containers:
+      - name: kibana
+        image: docker.elastic.co/kibana/kibana:8.15.3
+        ports:
+        - containerPort: 5601
+        env:
+        - name: ELASTICSEARCH_HOSTS
+          value: http://elasticsearch:9200    # le Service Elasticsearch
+        resources:
+          requests: { cpu: 100m, memory: 512Mi, ephemeral-storage: 100Mi }
+          limits:   { cpu: "1", memory: 1Gi, ephemeral-storage: 1Gi }
+        readinessProbe:
+          tcpSocket: { port: 5601 }
+          initialDelaySeconds: 30
+        livenessProbe:
+          tcpSocket: { port: 5601 }
+          initialDelaySeconds: 120            # Kibana démarre lentement
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana
+  namespace: logging
+spec:
+  selector:
+    app: kibana
+  ports:
+  - port: 5601

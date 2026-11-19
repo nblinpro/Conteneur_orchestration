@@ -1,3 +1,5 @@
+{{- /* Tout le fichier n'est généré que si networkPolicy.enabled vaut true (values.yaml).
+     Équivalent de k8s/11-networkpolicies.yml : voir ce fichier pour le détail des champs. */}}
 {{- if .Values.networkPolicy.enabled }}
 # Règles réseau : tout est bloqué par défaut, puis on autorise uniquement les liens nécessaires.
 #   ingress-nginx -> web -> identity-api / jobs-api / applicants-api
@@ -11,7 +13,7 @@ kind: NetworkPolicy
 metadata:
   name: default-deny-ingress
 spec:
-  podSelector: {}
+  podSelector: {}           # {} = tous les pods ; aucune règle ingress => tout est bloqué
   policyTypes:
   - Ingress
 ---
@@ -28,6 +30,7 @@ spec:
   ingress:
   - from:
     - namespaceSelector:
+        # namespace du contrôleur ingress, lu dans values.yaml (ingress-nginx par défaut)
         matchLabels: { kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressNamespace }} }
     ports:
     - port: 80

@@ -1,10 +1,18 @@
 # web : site MVC qui appelle identity-api et jobs-api. Exposé uniquement via l'Ingress (ingress.yaml).
+# Modèle Helm équivalent à k8s/09-web.yml (voir ce fichier pour l'explication détaillée de chaque champ).
+# Différences avec k8s/ :
+#   - pas de "namespace:" : Helm crée les objets dans le namespace passé avec -n ;
+#   - les valeurs variables (image, réplicas, ressources...) viennent de values.yaml ;
+#   - les blocs répétitifs (labels, image, affinité) sont générés par _helpers.tpl.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: web
+  # labels project/app/tier générés par _helpers.tpl ; nindent = retour à la ligne + indentation
   labels: {{- include "dotnetgigs.labels" (list "web" "frontend") | nindent 4 }}
 spec:
+  # Si l'HPA est actif, on n'écrit pas "replicas" : sinon chaque helm upgrade
+  # remettrait le nombre de pods à 2 et écraserait la décision de l'HPA.
   {{- if not .Values.web.hpa.enabled }}
   replicas: {{ .Values.web.replicas }}   # avec l'HPA, c'est lui qui fixe le nombre de pods
   {{- end }}
@@ -15,8 +23,9 @@ spec:
     metadata:
       labels: {{- include "dotnetgigs.labels" (list "web" "frontend") | nindent 8 }}
     spec:
+      # affinité imposée par le sujet : web => jobs.api et applicants.api
       {{- include "dotnetgigs.affinity" (list "jobs-api" "applicants-api") | nindent 6 }}
-      imagePullSecrets:
+      imagePullSecrets:          # identifiants Docker Hub (repo privé)
       - name: {{ .Values.image.pullSecret }}
       containers:
       - name: web
@@ -24,6 +33,7 @@ spec:
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         ports:
         - containerPort: 80
+        # URL des API : remplacent celles d'appsettings.json (ApiSettings__X = clé ApiSettings:X)
         env:
         - name: ApiSettings__IdentityApiUrl   # remplace http://identity.api (point interdit dans un nom de Service)
           value: http://identity-api
@@ -31,6 +41,8 @@ spec:
           value: http://jobs-api
         - name: Logging__LogLevel__Default
           value: Information
+        # ressources lues dans values.yaml ; toYaml recopie le bloc tel quel
+        # ressources lues dans values.yaml (valeurs imposées par le sujet)
         resources: {{- toYaml .Values.web.resources | nindent 10 }}
         readinessProbe:
           httpGet: { path: /Home/About, port: 80 }   # page sans appel aux API
@@ -41,6 +53,7 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 20
 ---
+{{- /* L'HPA n'est généré que si web.hpa.enabled vaut true dans values.yaml */}}
 {{- if .Values.web.hpa.enabled }}
 # Autoscaling de web selon le CPU (valeur absolue : la request de 4m rend un % inutilisable)
 apiVersion: autoscaling/v2
@@ -61,9 +74,10 @@ spec:
       name: cpu
       target:
         type: AverageValue
-        averageValue: {{ .Values.web.hpa.averageCpu }}
+        averageValue: {{ .Values.web.hpa.averageCpu }}   # 50m par défaut : au-delà, ajout d'un pod
 ---
 {{- end }}
+# Service interne de web : c'est lui que l'Ingress (ingress.yaml) cible
 apiVersion: v1
 kind: Service
 metadata:

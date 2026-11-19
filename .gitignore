@@ -23,3 +23,5 @@ dist/
 
 # Certificats générés (clé privée)
 projet_k8s/certs/
+
+projet_k8s_bis/certs/

@@ -1,0 +1,28 @@
+# Pod de test qui envoie beaucoup de requêtes au site, pour voir l'HPA ajouter des pods web.
+# Lancer  : kubectl apply -f scripts/load-generator.yml
+# Suivre  : kubectl get hpa -n dotnetgigs -w
+# Arrêter : kubectl delete -f scripts/load-generator.yml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: load-generator
+  namespace: dotnetgigs
+spec:
+  restartPolicy: Never
+  containers:
+  - name: load-generator
+    image: curlimages/curl:8.11.1
+    # 20 boucles en parallèle qui appellent la page d'accueil via l'Ingress (HTTPS)
+    command:
+    - /bin/sh
+    - -c
+    - |
+      for i in $(seq 1 20); do
+        ( while true; do
+            curl -sk -o /dev/null -H "Host: dotnetgigs.local" https://ingress-nginx-controller.ingress-nginx.svc.cluster.local/
+          done ) &
+      done
+      wait
+    resources:
+      requests: { cpu: 100m, memory: 32Mi, ephemeral-storage: 10Mi }
+      limits:   { cpu: "1", memory: 128Mi, ephemeral-storage: 50Mi }

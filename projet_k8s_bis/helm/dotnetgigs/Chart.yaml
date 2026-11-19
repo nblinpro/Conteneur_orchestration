@@ -1,0 +1,9 @@
+# Carte d'identité du chart Helm.
+# Un chart = des fichiers YAML Kubernetes (dossier templates/) + des valeurs (values.yaml).
+# Helm remplace les {{ .Values.xxx }} par les valeurs, puis crée tout dans le cluster.
+apiVersion: v2
+name: dotnetgigs
+description: Application dotnetgigs (web + 3 API + SQL Server + Redis + RabbitMQ) sur Kubernetes
+type: application
+version: 1.0.0      # version du chart
+appVersion: "1.0"   # version de l'application

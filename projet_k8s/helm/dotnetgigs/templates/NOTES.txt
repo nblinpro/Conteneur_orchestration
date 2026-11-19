@@ -1,3 +1,7 @@
+{{- /*
+NOTES.txt : texte affiché dans le terminal à la fin de "helm install" / "helm upgrade"
+(et par "helm status dotnetgigs -n dotnetgigs"). Ce n'est pas une ressource Kubernetes.
+*/ -}}
 dotnetgigs {{ .Chart.AppVersion }} est déployé dans le namespace {{ .Release.Namespace }}.
 
 Suivre le démarrage (les API redémarrent quelques fois le temps que SQL Server et RabbitMQ soient prêts) :

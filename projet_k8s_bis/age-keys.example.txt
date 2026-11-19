@@ -1,0 +1,10 @@
+# EXEMPLE du fichier de clé age (FAUSSE clé, ne fonctionne pas).
+# Le vrai fichier n'est JAMAIS dans Git : il se place sur chaque machine qui déploie, ici :
+#   ~/.config/sops/age/keys.txt   (droits : chmod 600)
+# Il est créé une seule fois avec "age-keygen -o ~/.config/sops/age/keys.txt",
+# puis copié par un canal privé (scp, gestionnaire de mots de passe) vers les autres machines.
+#
+# Format du vrai fichier (3 lignes) :
+# created: 2026-11-19T18:35:00Z
+# public key: age107uynqaz2y2hw330577nsn8axsvagsntx8tfq2lrh5qxy84d85nsgmy4v0
+AGE-SECRET-KEY-1XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX

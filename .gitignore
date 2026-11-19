@@ -25,3 +25,4 @@ dist/
 projet_k8s/certs/
 
 projet_k8s_bis/certs/
+projet_k8s_bis/**/keys.txt

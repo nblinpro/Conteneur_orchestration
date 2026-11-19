@@ -32,6 +32,7 @@ projet_k8s_bis/
 ├── helm/
 │   ├── 00-namespace.yml            namespace dotnetgigs (créé avant le chart, étape 2)
 │   ├── secrets.enc.yaml            mot de passe SQL, chiffré avec SOPS (section 12)
+│   ├── secrets.example.yaml        exemple du contenu une fois déchiffré
 │   └── dotnetgigs/                 chart Helm de l'application
 │       ├── Chart.yaml              nom et version du chart
 │       ├── values.yaml             valeurs modifiables : image, domaine, réplicas, ressources
@@ -59,6 +60,7 @@ projet_k8s_bis/
 ├── scripts/load-generator.yml      pod qui génère de la charge (démo de l'HPA)
 ├── docs/architecture.png           schéma d'architecture (source : architecture.svg)
 ├── .sops.yaml                      configuration de SOPS (clé publique de chiffrement)
+├── age-keys.example.txt            exemple du format de la clé privée age (fausse clé)
 ├── AUTHORS.TXT                     membres du groupe et responsabilités
 └── projet.md                       sujet
 ```
@@ -417,13 +419,32 @@ Chemin du mot de passe SQL :
 Secret `dotnetgigs-secrets` (`01-secret.yml`) → variables d'environnement des pods (`secretKeyRef`).
 
 **La clé age** : `helm/secrets.enc.yaml` est chiffré pour la clé publique écrite dans `.sops.yaml`. Pour le déchiffrer, il faut la clé privée
-correspondante dans `~/.config/sops/age/keys.txt`. Elle est transmise à part aux personnes autorisées (membres du groupe, enseignant).
-Sans elle, on peut installer en donnant le mot de passe à la main : `helm upgrade --install dotnetgigs helm/dotnetgigs -n dotnetgigs --set sqlPassword=...`
+correspondante dans `~/.config/sops/age/keys.txt`. Elle n'est pas dans le dépôt : un simple `git clone` ne suffit donc pas à déchiffrer.
+Elle est transmise à part, par un canal privé (scp, gestionnaire de mots de passe), aux personnes autorisées (membres du groupe, enseignant).
+Le format du fichier est montré dans [age-keys.example.txt](age-keys.example.txt) (fausse clé).
+
+Installer la clé sur une nouvelle machine (après avoir cloné le dépôt et installé sops / age, section 4) :
+
+```bash
+mkdir -p ~/.config/sops/age
+nano ~/.config/sops/age/keys.txt      # coller le contenu du fichier keys.txt reçu
+chmod 600 ~/.config/sops/age/keys.txt
+sops decrypt helm/secrets.enc.yaml    # doit afficher : sqlPassword: ...
+```
+
+Sans la clé, `sops decrypt` répond `Failed to get the data key required to decrypt the SOPS file`.
+On peut alors installer en donnant le mot de passe à la main :
+`helm upgrade --install dotnetgigs helm/dotnetgigs -n dotnetgigs --set sqlPassword=...`
+
+Contenu du fichier une fois déchiffré : voir [helm/secrets.example.yaml](helm/secrets.example.yaml). Commandes utiles :
 
 ```bash
 sops decrypt helm/secrets.enc.yaml     # afficher le contenu déchiffré
 sops edit helm/secrets.enc.yaml        # modifier (ouvre un éditeur, rechiffre à l'enregistrement)
 ```
+
+Utiliser sa propre clé au lieu de celle du groupe : créer une clé (`age-keygen -o ~/.config/sops/age/keys.txt`), remplacer la clé publique
+dans `.sops.yaml`, puis recréer le fichier chiffré : `sops edit helm/secrets.enc.yaml` (supprimer l'ancien fichier avant).
 
 **Limite connue** : le mot de passe est aussi écrit en dur dans le code fourni (`appscore/Database/Dockerfile` et `SqlCmdStartup.sh`,
 qui crée les bases). Le changer côté Kubernetes casserait la création des bases : il faudrait d'abord que ce script lise la variable

@@ -114,9 +114,13 @@ curl -Lo ~/.local/bin/sops https://github.com/getsops/sops/releases/download/v3.
 chmod +x ~/.local/bin/sops
 curl -L https://github.com/FiloSottile/age/releases/download/v1.3.2/age-v1.3.2-linux-amd64.tar.gz | tar xz -C /tmp
 cp /tmp/age/age /tmp/age/age-keygen ~/.local/bin/
-source ~/.profile
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc    # ~/.local/bin dans le PATH de tous les terminaux
+source ~/.bashrc
 sops --version ; age --version
 ```
+
+Si un terminal répond `Command 'sops' not found` alors que sops est installé, c'est que `~/.local/bin` n'est pas dans son PATH :
+lancer `source ~/.bashrc` (ou ouvrir un nouveau terminal), ou appeler sops par son chemin complet : `~/.local/bin/sops`.
 
 - **La clé privée age** dans `~/.config/sops/age/keys.txt` (transmise à part, jamais dans Git : voir section 12).
 
@@ -192,6 +196,7 @@ kubectl get pods -n dotnetgigs -w
 
 `sops exec-file` déchiffre `helm/secrets.enc.yaml` dans un fichier temporaire, remplace `{}` par son chemin, lance `helm`, puis efface le fichier.
 Sans ce fichier, Helm s'arrête avec le message « sqlPassword manquant ».
+Si le terminal répond `Command 'sops' not found` : `source ~/.bashrc` (voir section 4).
 
 Attendre que les 11 pods soient en `1/1 Running` (2 à 3 minutes), puis quitter avec `Ctrl+C`.
 Quelques redémarrages des API au début sont normaux : elles plantent tant que SQL Server et RabbitMQ ne sont pas prêts, puis Kubernetes les relance automatiquement.

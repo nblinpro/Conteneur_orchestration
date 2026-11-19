@@ -1,4 +1,4 @@
-# Les seules valeurs qui changent d'un cluster à l'autre.
+# Les valeurs lues par les fichiers de templates/ (avec {{ .Values.xxx }}).
 # Tout le reste est écrit directement dans les fichiers de templates/.
 # Pour changer une valeur sans modifier ce fichier :
 #   helm upgrade --install dotnetgigs helm/dotnetgigs -n dotnetgigs --set host=monsite.local
@@ -13,5 +13,40 @@ host: dotnetgigs.local
 # Nombre de pods de chaque API (2 = si un pod tombe, l'autre répond encore)
 apiReplicas: 2
 
-# Mot de passe SQL Server : imposé par l'image sql-data fournie par le prof
-sqlPassword: "Pass@word"
+# Mot de passe SQL Server : volontairement vide ici, pour ne pas l'écrire en clair dans Git.
+# La vraie valeur est dans helm/secrets.enc.yaml, chiffré avec SOPS, et déchiffrée
+# uniquement au moment de "helm upgrade" (voir README, étape 4).
+sqlPassword: ""
+
+# Ressources de chaque application (sujet, partie Performance), réunies ici pour
+# les vérifier et les modifier au même endroit :
+#   requests = ce qui est réservé pour le pod (sert à choisir le nœud)
+#   limits   = le maximum autorisé (CPU bridé au-delà, pod redémarré si la mémoire est dépassée)
+#   cpu : 1 = un cœur, 500m = un demi-cœur, 4m = 4 millièmes de cœur
+#   memory : RAM ; ephemeral-storage : disque temporaire du conteneur
+# Chaque fichier de templates/ recopie son bloc avec : toYaml .Values.resources.<app>
+resources:
+  # Valeurs imposées par le sujet
+  web:
+    requests: { cpu: 4m, memory: 900Mi, ephemeral-storage: 100Mi }
+    limits:   { cpu: "1", memory: 2000Mi, ephemeral-storage: 1Gi }
+  jobsApi:
+    requests: { cpu: 500m, memory: 500Mi, ephemeral-storage: 100Mi }
+    limits:   { cpu: "1", memory: 1500Mi, ephemeral-storage: 1Gi }
+  applicantsApi:
+    requests: { cpu: 500m, memory: 500Mi, ephemeral-storage: 100Mi }
+    limits:   { cpu: "1", memory: 1500Mi, ephemeral-storage: 1Gi }
+  identityApi:
+    requests: { cpu: 500m, memory: 500Mi, ephemeral-storage: 100Mi }
+    limits:   { cpu: "1", memory: 1500Mi, ephemeral-storage: 1Gi }
+  # Requests imposées par le sujet, limite choisie par nous
+  userData:
+    requests: { cpu: 4m, memory: 500Mi, ephemeral-storage: 50Mi }
+    limits:   { cpu: 500m, memory: 1Gi, ephemeral-storage: 500Mi }
+  # Pas de valeur imposée par le sujet (SQL Server a besoin d'au moins 2 Go de RAM)
+  sqlData:
+    requests: { cpu: 500m, memory: 2Gi, ephemeral-storage: 100Mi }
+    limits:   { cpu: "2", memory: 3Gi, ephemeral-storage: 1Gi }
+  rabbitmq:
+    requests: { cpu: 100m, memory: 256Mi, ephemeral-storage: 100Mi }
+    limits:   { cpu: 500m, memory: 512Mi, ephemeral-storage: 1Gi }

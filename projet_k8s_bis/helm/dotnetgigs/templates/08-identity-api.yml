@@ -39,10 +39,10 @@ spec:
           value: rabbitmq
         - name: Logging__Console__LogLevel__Default
           value: Information
-        # valeurs imposées par le sujet
+        # Ressources (CPU, RAM, disque temporaire) : lues dans values.yaml (resources.identityApi).
+        # toYaml recopie le bloc tel quel, nindent 10 le décale de 10 espaces sous "resources:".
         resources:
-          requests: { cpu: 500m, memory: 500Mi, ephemeral-storage: 100Mi }
-          limits:   { cpu: "1", memory: 1500Mi, ephemeral-storage: 1Gi }
+          {{- toYaml .Values.resources.identityApi | nindent 10 }}
         readinessProbe:
           tcpSocket: { port: 80 }
           initialDelaySeconds: 10

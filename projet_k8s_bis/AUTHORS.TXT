@@ -2,5 +2,5 @@ Nicolas Blin
 Nolan DERUELLE
 
 Responsabilités :
-- Nicolas Blin : (à compléter)
-- Nolan DERUELLE : (à compléter)
+- Nicolas Blin : déploiement des applications avec Helm (chart dotnetgigs : Deployments, Services, stockage, Ingress HTTPS avec Traefik, HPA, NetworkPolicies, RBAC, chiffrement du mot de passe avec SOPS)
+- Nolan DERUELLE : monitoring (Prometheus, kube-state-metrics, node-exporter) et centralisation des logs (pile EFK : Elasticsearch, Fluent Bit, Kibana, dashboard et recherche d'erreurs)

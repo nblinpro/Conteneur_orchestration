@@ -21,10 +21,10 @@ spec:
         image: rabbitmq:3-management   # image publique
         ports:
         - containerPort: 5672
-        # pas de valeur imposée par le sujet
+        # Ressources (CPU, RAM, disque temporaire) : lues dans values.yaml (resources.rabbitmq).
+        # toYaml recopie le bloc tel quel, nindent 10 le décale de 10 espaces sous "resources:".
         resources:
-          requests: { cpu: 100m, memory: 256Mi, ephemeral-storage: 100Mi }
-          limits:   { cpu: 500m, memory: 512Mi, ephemeral-storage: 1Gi }
+          {{- toYaml .Values.resources.rabbitmq | nindent 10 }}
         readinessProbe:
           tcpSocket: { port: 5672 }
           initialDelaySeconds: 15

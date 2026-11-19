@@ -47,10 +47,10 @@ spec:
           value: http://jobs-api
         - name: Logging__LogLevel__Default
           value: Information
-        # valeurs imposées par le sujet
+        # Ressources (CPU, RAM, disque temporaire) : lues dans values.yaml (resources.web).
+        # toYaml recopie le bloc tel quel, nindent 10 le décale de 10 espaces sous "resources:".
         resources:
-          requests: { cpu: 4m, memory: 900Mi, ephemeral-storage: 100Mi }
-          limits:   { cpu: "1", memory: 2000Mi, ephemeral-storage: 1Gi }
+          {{- toYaml .Values.resources.web | nindent 10 }}
         readinessProbe:
           tcpSocket: { port: 80 }
           initialDelaySeconds: 10

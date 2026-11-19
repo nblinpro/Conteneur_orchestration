@@ -1,0 +1,7 @@
+# Configuration de SOPS (chiffrement des secrets) pour ce projet.
+# Tout fichier nommé *.enc.yaml est chiffré avec la clé publique age ci-dessous.
+# Seul le détenteur de la clé privée correspondante (~/.config/sops/age/keys.txt,
+# hors du dépôt Git) peut le déchiffrer.
+creation_rules:
+  - path_regex: .*\.enc\.yaml$
+    age: age107uynqaz2y2hw330577nsn8axsvagsntx8tfq2lrh5qxy84d85nsgmy4v0

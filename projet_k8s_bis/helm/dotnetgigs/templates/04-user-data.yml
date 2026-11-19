@@ -22,10 +22,10 @@ spec:
         image: redis:7-alpine     # image publique : pas besoin de dockerhub-secret
         ports:
         - containerPort: 6379
-        # requests imposées par le sujet (4m / 500Mi) ; limite choisie par nous
+        # Ressources (CPU, RAM, disque temporaire) : lues dans values.yaml (resources.userData).
+        # toYaml recopie le bloc tel quel, nindent 10 le décale de 10 espaces sous "resources:".
         resources:
-          requests: { cpu: 4m, memory: 500Mi, ephemeral-storage: 50Mi }
-          limits:   { cpu: 500m, memory: 1Gi, ephemeral-storage: 500Mi }
+          {{- toYaml .Values.resources.userData | nindent 10 }}
         readinessProbe:
           tcpSocket: { port: 6379 }
         livenessProbe:

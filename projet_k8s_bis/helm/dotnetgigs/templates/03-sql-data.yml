@@ -38,11 +38,10 @@ spec:
         volumeMounts:
         - name: data
           mountPath: /var/opt/mssql   # là où SQL Server range ses bases
-        # requests = ressources réservées ; limits = maximum autorisé
-        # (pas de valeur imposée par le sujet ; SQL Server a besoin d'au moins 2 Go)
+        # Ressources (CPU, RAM, disque temporaire) : lues dans values.yaml (resources.sqlData).
+        # toYaml recopie le bloc tel quel, nindent 10 le décale de 10 espaces sous "resources:".
         resources:
-          requests: { cpu: 500m, memory: 2Gi, ephemeral-storage: 100Mi }
-          limits:   { cpu: "2", memory: 3Gi, ephemeral-storage: 1Gi }
+          {{- toYaml .Values.resources.sqlData | nindent 10 }}
         # readiness : le pod reçoit du trafic seulement quand le port répond
         readinessProbe:
           tcpSocket: { port: 1433 }

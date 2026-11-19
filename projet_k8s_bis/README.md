@@ -436,16 +436,72 @@ Sans la clé, `sops decrypt` répond `Failed to get the data key required to dec
 On peut alors installer en donnant le mot de passe à la main :
 `helm upgrade --install dotnetgigs helm/dotnetgigs -n dotnetgigs --set sqlPassword=...`
 
-Contenu du fichier une fois déchiffré : voir [helm/secrets.example.yaml](helm/secrets.example.yaml). Commandes utiles :
+### Voir et sauvegarder la clé
+
+```bash
+cat ~/.config/sops/age/keys.txt
+```
+
+Le fichier contient 3 lignes (format dans [age-keys.example.txt](age-keys.example.txt)) : la date de création, la clé **publique**
+(`# public key: age1...`, non secrète, c'est elle qui est écrite dans `.sops.yaml`) et la clé **privée** (`AGE-SECRET-KEY-1...`, secrète).
+Garder une copie de ce fichier dans un gestionnaire de mots de passe : si la clé est perdue, plus personne ne peut déchiffrer
+`secrets.enc.yaml` (il faut alors créer une nouvelle clé et recréer le fichier chiffré).
+
+### Afficher ou modifier le mot de passe
+
+Contenu du fichier une fois déchiffré : voir [helm/secrets.example.yaml](helm/secrets.example.yaml).
 
 ```bash
 sops decrypt helm/secrets.enc.yaml     # afficher le contenu déchiffré
 sops edit helm/secrets.enc.yaml        # modifier (ouvre un éditeur, rechiffre à l'enregistrement)
 ```
 
-Utiliser sa propre clé au lieu de celle du groupe : créer une clé (`age-keygen -o ~/.config/sops/age/keys.txt`), remplacer la clé publique
-dans `.sops.yaml`, puis recréer le fichier chiffré : `sops edit helm/secrets.enc.yaml` (supprimer l'ancien fichier avant).
+Modifier le contenu **ne change pas la clé** : `sops edit` déchiffre avec la clé, puis rechiffre avec la même clé (celle de `.sops.yaml`).
+Le texte chiffré (`ENC[AES256_GCM,...]`) change à chaque modification, mais la même clé l'ouvre toujours : les personnes qui ont déjà
+la clé n'ont rien à refaire. Après une modification, relancer l'étape 4 de la section 6 pour mettre à jour le Secret dans le cluster.
+Pour le mot de passe SQL, garder `Pass@word` tant que le script de l'image n'est pas modifié (voir « Limite connue »).
 
-**Limite connue** : le mot de passe est aussi écrit en dur dans le code fourni (`appscore/Database/Dockerfile` et `SqlCmdStartup.sh`,
+La clé ne change que si l'on remplace la clé publique dans `.sops.yaml` puis lance `sops updatekeys` (voir « Changer de clé »).
+Ne jamais modifier le fichier `keys.txt` à la main : une clé modifiée ne fonctionne plus.
+
+### Générer une clé (première mise en place uniquement)
+
+```bash
+mkdir -p ~/.config/sops/age
+age-keygen -o ~/.config/sops/age/keys.txt     # crée la paire de clés et affiche la clé publique age1...
+chmod 600 ~/.config/sops/age/keys.txt
+```
+
+Puis écrire cette clé publique dans `.sops.yaml` (ligne `age:`) et créer le fichier chiffré :
+`sops edit helm/secrets.enc.yaml` (sops ouvre un contenu d'exemple : le remplacer par `sqlPassword: ...`, puis enregistrer).
+
+Attention : ne pas relancer `age-keygen -o ~/.config/sops/age/keys.txt` sur une machine qui a déjà sa clé. Le fichier serait écrasé,
+et `secrets.enc.yaml`, chiffré pour l'ancienne clé, ne pourrait plus être déchiffré.
+
+### Changer de clé (par exemple si elle a fuité)
+
+À faire dans cet ordre, en gardant l'ancienne clé jusqu'à la fin :
+
+```bash
+# 1. Créer la nouvelle clé dans un AUTRE fichier (affiche sa clé publique age1...)
+age-keygen -o ~/nouvelle-cle.txt
+
+# 2. L'ajouter à côté de l'ancienne (sops sait utiliser plusieurs clés)
+cat ~/nouvelle-cle.txt >> ~/.config/sops/age/keys.txt && rm ~/nouvelle-cle.txt
+
+# 3. Dans .sops.yaml, remplacer la clé publique (ligne "age:") par la nouvelle age1...
+
+# 4. Rechiffrer le fichier pour la nouvelle clé (sops utilise l'ancienne pour l'ouvrir)
+sops updatekeys helm/secrets.enc.yaml
+
+# 5. Vérifier, puis retirer l'ancienne clé de keys.txt (ses 3 lignes, en haut du fichier)
+sops decrypt helm/secrets.enc.yaml
+```
+
+Puis commiter `.sops.yaml` et `helm/secrets.enc.yaml`, et transmettre la nouvelle clé aux personnes autorisées.
+
+### Limite connue
+
+Le mot de passe est aussi écrit en dur dans le code fourni (`appscore/Database/Dockerfile` et `SqlCmdStartup.sh`,
 qui crée les bases). Le changer côté Kubernetes casserait la création des bases : il faudrait d'abord que ce script lise la variable
 `SA_PASSWORD`, puis reconstruire l'image sql-data.

@@ -1,0 +1,61 @@
+# SQL Server + script de création des bases dotnetgigs.jobs et dotnetgigs.applicants.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sql-data
+  namespace: dotnetgigs
+  labels: { project: dotnetgigs, app: sql-data, tier: data }
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: sql-data
+  template:
+    metadata:
+      labels: { project: dotnetgigs, app: sql-data, tier: data }
+    spec:
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: sql-data-pvc
+      containers:
+      - name: sql-data
+        image: dotnetgigs/sql-data:1.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 1433
+        env:
+        - name: ACCEPT_EULA
+          value: "Y"
+        - name: SA_PASSWORD
+          valueFrom: { secretKeyRef: { name: dotnetgigs-secrets, key: SA_PASSWORD } }
+        volumeMounts:
+        - name: data
+          mountPath: /var/opt/mssql
+        resources:
+          requests: { cpu: 500m, memory: 2Gi, ephemeral-storage: 100Mi }
+          limits:   { cpu: "2", memory: 3Gi, ephemeral-storage: 1Gi }
+        readinessProbe:
+          tcpSocket: { port: 1433 }
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket: { port: 1433 }
+          initialDelaySeconds: 60
+          periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sql-data
+  namespace: dotnetgigs
+  labels: { project: dotnetgigs, app: sql-data, tier: data }
+spec:
+  type: ClusterIP
+  selector:
+    app: sql-data
+  ports:
+  - port: 1433
+    targetPort: 1433

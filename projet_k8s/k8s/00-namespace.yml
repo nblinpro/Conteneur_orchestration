@@ -1,0 +1,7 @@
+# Namespace du projet : toutes les ressources de l'application y sont créées.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dotnetgigs
+  labels:
+    project: dotnetgigs

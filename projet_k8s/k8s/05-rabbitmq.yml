@@ -1,0 +1,51 @@
+# RabbitMQ : bus de messages entre les API (port 5672, console d'admin 15672).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  namespace: dotnetgigs
+  labels: { project: dotnetgigs, app: rabbitmq, tier: messaging }
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels: { project: dotnetgigs, app: rabbitmq, tier: messaging }
+    spec:
+      containers:
+      - name: rabbitmq
+        image: rabbitmq:3-management
+        ports:
+        - containerPort: 5672
+        - containerPort: 15672
+        resources:
+          requests: { cpu: 100m, memory: 256Mi, ephemeral-storage: 100Mi }
+          limits:   { cpu: 500m, memory: 512Mi, ephemeral-storage: 1Gi }
+        readinessProbe:
+          tcpSocket: { port: 5672 }
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket: { port: 5672 }
+          initialDelaySeconds: 60
+          periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: dotnetgigs
+  labels: { project: dotnetgigs, app: rabbitmq, tier: messaging }
+spec:
+  type: ClusterIP
+  selector:
+    app: rabbitmq
+  ports:
+  - name: amqp
+    port: 5672
+    targetPort: 5672
+  - name: management
+    port: 15672
+    targetPort: 15672

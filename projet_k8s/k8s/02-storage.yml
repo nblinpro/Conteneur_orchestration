@@ -1,0 +1,16 @@
+# Volume persistant de SQL Server, créé automatiquement par minikube
+# (StorageClass "standard" par défaut : pas de PV à écrire à la main).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sql-data-pvc
+  namespace: dotnetgigs
+  labels:
+    project: dotnetgigs
+    app: sql-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi

@@ -143,8 +143,7 @@ Variante sans Helm : `kubectl apply -f k8s/` déploie les mêmes ressources (apr
 ```bash
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
-helm upgrade --install prometheus prometheus-community/prometheus --version 29.47.2 \
-  -n monitoring --create-namespace -f monitoring/prometheus-values.yaml
+helm upgrade --install prometheus prometheus-community/prometheus --version 29.47.2 -n monitoring --create-namespace -f monitoring/prometheus-values.yaml
 ```
 
 ### 5.4 Logs (EFK)
@@ -152,16 +151,16 @@ helm upgrade --install prometheus prometheus-community/prometheus --version 29.4
 ```bash
 kubectl apply -f logging/elasticsearch.yaml
 kubectl apply -f logging/kibana.yaml
+# Attendre qu'Elasticsearch soit prêt AVANT d'installer Fluent Bit (sinon les premiers logs sont perdus)
+kubectl wait --for=condition=Ready pod -l app=elasticsearch -n logging --timeout=300s
 helm repo add fluent https://fluent.github.io/helm-charts
-helm upgrade --install fluent-bit fluent/fluent-bit --version 0.58.3 \
-  -n logging -f logging/fluent-bit-values.yaml
+helm upgrade --install fluent-bit fluent/fluent-bit --version 0.58.3 -n logging -f logging/fluent-bit-values.yaml
 
 # Quand Kibana est prêt : import du dashboard et des recherches
 kubectl wait --for=condition=Ready pod -l app=kibana -n logging --timeout=300s
 kubectl port-forward -n logging svc/kibana 5601:5601 &
 sleep 3
-curl -X POST "http://localhost:5601/api/saved_objects/_import?overwrite=true" \
-  -H "kbn-xsrf: true" --form file=@logging/kibana-objects.ndjson
+curl -X POST "http://localhost:5601/api/saved_objects/_import?overwrite=true" -H "kbn-xsrf: true" --form file=@logging/kibana-objects.ndjson
 kill %1
 ```
 

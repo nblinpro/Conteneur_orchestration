@@ -63,6 +63,9 @@ config:
         Logstash_Prefix dotnetgigs
         Suppress_Type_Name On
         Replace_Dots On
+        Retry_Limit 5
+        # Retry_Limit : si Elasticsearch n'est pas encore prêt, Fluent Bit réessaie 5 fois
+        # au lieu d'abandonner les logs au premier échec
 
 # Script Lua du filtre 2 : .NET commence ses messages par "info:", "warn:", "fail:"...
 # On le traduit en champ "level" pour pouvoir filtrer les erreurs dans Kibana (level : ERROR).

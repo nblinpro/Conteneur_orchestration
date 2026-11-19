@@ -1,0 +1,47 @@
+# RabbitMQ : bus de messages entre les API (5672, console d'admin 15672)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  labels: {{- include "dotnetgigs.labels" (list "rabbitmq" "messaging") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels: {{- include "dotnetgigs.labels" (list "rabbitmq" "messaging") | nindent 8 }}
+    spec:
+      containers:
+      - name: rabbitmq
+        image: {{ .Values.rabbitmq.image }}
+        ports:
+        - containerPort: 5672
+        - containerPort: 15672
+        resources: {{- toYaml .Values.rabbitmq.resources | nindent 10 }}
+        readinessProbe:
+          tcpSocket: { port: 5672 }
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket: { port: 5672 }
+          initialDelaySeconds: 60
+          periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  labels: {{- include "dotnetgigs.labels" (list "rabbitmq" "messaging") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app: rabbitmq
+  ports:
+  - name: amqp
+    port: 5672
+    targetPort: 5672
+  - name: management
+    port: 15672
+    targetPort: 15672

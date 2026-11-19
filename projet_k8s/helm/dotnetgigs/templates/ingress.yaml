@@ -1,0 +1,26 @@
+# Seul point d'entrée externe : https://<host> -> Service web.
+# Le contrôleur ingress n'est pas dans le chart (addon minikube ou installation séparée).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dotnetgigs-ingress
+  labels: {{- include "dotnetgigs.labels" (list "web" "frontend") | nindent 4 }}
+  annotations:
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"   # HTTP -> redirection vers HTTPS
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  tls:
+  - hosts:
+    - {{ .Values.ingress.host }}
+    secretName: {{ .Values.ingress.tlsSecret }}
+  rules:
+  - host: {{ .Values.ingress.host }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web
+            port:
+              number: 80

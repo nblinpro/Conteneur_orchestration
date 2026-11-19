@@ -151,14 +151,15 @@ projet_k8s/
 ## 6. Plan de travail dans l'ordre
 
 1. ✅ **Préparer la VM** : 6 CPU, 15 Go, disque agrandi, minikube recréé (4 CPU / 11 Go / 40 Go), metrics-server activé. Reste : `minikube addons enable ingress`.
-2. ⬜ **Images** : `docker build` des 5 images depuis `appscore/` (contexte `./` comme dans le compose, `./Database` pour SQL), test rapide avec `docker compose up`, puis tag et push sur Docker Hub (repo privé unique).
-3. ⬜ **App de base** : templates Helm de sql-data, user-data, rabbitmq, puis des 3 APIs, puis de web. `helm install` → tout en `Running`, le site s'affiche via port-forward.
-4. ⬜ **Exigences « pod »** : ressources, sondes, labels, affinités, PVC.
-5. ⬜ **HTTPS** : certificat, Secret TLS, Ingress, `dotnetgigs.local` dans le fichier hosts de l'hôte.
-6. ⬜ **Sécurité** : ServiceAccount + RBAC, NetworkPolicies (tester que le site marche toujours).
-7. ⬜ **HPA** + démo de charge (capture d'écran ou vidéo pour la soutenance).
-8. ⬜ **Prometheus** : `helm install`, vérifier les cibles (Status → Targets) et quelques requêtes (CPU des pods, état des nœuds, `apiserver_request_total`).
-9. ⬜ **EFK** : Elasticsearch + Kibana + Fluent Bit, dashboard et recherche d'erreurs.
-10. ⬜ **Docs** : README, schéma, AUTHORS.TXT, répétition de la soutenance (20 min).
+2. ✅ **Images** : 5 images construites et poussées sur Docker Hub, repo privé `nicoter04/dotnetgigs_bd` (un tag par app). Secret `dockerhub-secret` créé à la main (contient les identifiants, pas de fichier yml).
+3. ✅ **App de base** : manifestes `k8s/00` à `k8s/09` (style `k8s/wordpress`), tout en `Running`, jobs-api lit bien SQL Server, web répond. ⬜ Conversion en chart Helm à la fin.
+4. ✅ **Exigences « pod »** : ressources (+ ephemeral-storage), sondes, labels, affinités, PVC déjà dans les manifestes.
+5. ✅ **HTTPS** : `scripts/gen-cert.sh` (certificat auto-signé + Secret TLS) + `k8s/10-ingress.yml` ; HTTP redirigé en 308 vers HTTPS.
+6. ✅ **Sécurité** : `k8s/11-networkpolicies.yml` (default-deny + liens autorisés, testé) + `k8s/12-rbac.yml` (SA `jobs-api-sa`, lecture des ConfigMaps uniquement).
+7. ✅ **HPA** : dans `k8s/09-web.yml`, cible en valeur absolue 50m/pod (la request de 4m rend le % inutilisable), 2 → 3 pods. Démo avec `scripts/load-generator.yml` (passe par l'Ingress) : passage de 2 à 3 pods constaté. ⬜ Refaire la démo en capture/vidéo pour la soutenance.
+8. ✅ **Prometheus** : chart `prometheus-community/prometheus` 29.47.2 dans le namespace `monitoring`, config `monitoring/prometheus-values.yaml`. Toutes les cibles `up` (apiserver, kubelet, cAdvisor, kube-state-metrics, node-exporter) ; requêtes testées.
+9. ✅ **EFK** (namespace `logging`) : `logging/elasticsearch.yaml`, `logging/kibana.yaml`, Fluent Bit (chart `fluent/fluent-bit` 0.58.3, `logging/fluent-bit-values.yaml` : messages .NET regroupés, couleurs retirées, champ `level`). Objets Kibana dans `logging/kibana-objects.ndjson` (data view, recherche « Erreurs », recherche + dashboard « Service jobs-api »). ⬜ Vérifier le rendu du dashboard dans le navigateur.
+10. ✅ **Helm** : chart `helm/dotnetgigs` (Secret, PVC, Deployments, Services, HPA, Ingress, NetworkPolicies, RBAC ; pas de contrôleur ingress), testé avec `helm install` sur le cluster.
+11. 🟨 **Docs** : ✅ `README.md`, ✅ `docs/architecture.png` (+ `.svg`), 🟨 `AUTHORS.TXT` (noms et responsabilités à compléter). ⬜ Répétition de la soutenance (20 min).
 
 Les étapes 2 et 3 sont le cœur du projet : tant que l'appli ne tourne pas dans le cluster, le reste ne peut pas être démontré.

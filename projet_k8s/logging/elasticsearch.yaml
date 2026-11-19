@@ -1,0 +1,91 @@
+# Elasticsearch : stockage et indexation des logs (1 nœud, sans sécurité : cluster de TP).
+# Installation : kubectl apply -f logging/elasticsearch.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: logging
+  labels: { project: dotnetgigs }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: elasticsearch-pvc
+  namespace: logging
+  labels: { project: dotnetgigs, app: elasticsearch, tier: logging }
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elasticsearch
+  namespace: logging
+  labels: { project: dotnetgigs, app: elasticsearch, tier: logging }
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: elasticsearch
+  template:
+    metadata:
+      labels: { project: dotnetgigs, app: elasticsearch, tier: logging }
+    spec:
+      securityContext:
+        fsGroup: 1000                    # Elasticsearch tourne avec l'utilisateur 1000
+      initContainers:
+      - name: fix-permissions            # rend le volume accessible à l'utilisateur 1000
+        image: busybox:1.36
+        command: ["sh", "-c", "chown -R 1000:1000 /usr/share/elasticsearch/data"]
+        volumeMounts:
+        - name: data
+          mountPath: /usr/share/elasticsearch/data
+      containers:
+      - name: elasticsearch
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+        ports:
+        - containerPort: 9200
+        env:
+        - name: discovery.type
+          value: single-node             # 1 seul nœud, pas de cluster
+        - name: xpack.security.enabled
+          value: "false"                 # pas d'authentification ni de TLS (TP)
+        - name: ES_JAVA_OPTS
+          value: "-Xms512m -Xmx512m"     # mémoire Java limitée à 512 Mo
+        volumeMounts:
+        - name: data
+          mountPath: /usr/share/elasticsearch/data
+        resources:
+          requests: { cpu: 250m, memory: 1Gi, ephemeral-storage: 100Mi }
+          limits:   { cpu: "1", memory: 1536Mi, ephemeral-storage: 1Gi }
+        readinessProbe:
+          httpGet: { path: /_cluster/health, port: 9200 }
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket: { port: 9200 }
+          initialDelaySeconds: 60
+          periodSeconds: 20
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: elasticsearch-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: logging
+  labels: { project: dotnetgigs, app: elasticsearch, tier: logging }
+spec:
+  type: ClusterIP
+  selector:
+    app: elasticsearch
+  ports:
+  - port: 9200
+    targetPort: 9200

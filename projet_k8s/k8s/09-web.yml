@@ -27,9 +27,11 @@ spec:
               labelSelector:
                 matchLabels: { app: applicants-api }
               topologyKey: kubernetes.io/hostname
+      imagePullSecrets:          # identifiants Docker Hub (repo privé)
+      - name: dockerhub-secret
       containers:
       - name: web
-        image: dotnetgigs/web:1.0
+        image: nicoter04/dotnetgigs_bd:web
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80
@@ -51,6 +53,30 @@ spec:
           tcpSocket: { port: 80 }
           initialDelaySeconds: 30
           periodSeconds: 20
+---
+# Autoscaling de web selon le CPU.
+# Cible en valeur absolue (AverageValue) et non en % : avec une request de 4m imposée,
+# un pourcentage serait toujours au-dessus de la cible, même sans charge.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: web-hpa
+  namespace: dotnetgigs
+  labels: { project: dotnetgigs, app: web, tier: frontend }
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web
+  minReplicas: 2
+  maxReplicas: 3            # chaque pod web réserve 900Mi : limité par la mémoire du cluster
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: AverageValue
+        averageValue: 50m   # au-delà de 50m de CPU par pod en moyenne : ajout d'un pod
 ---
 apiVersion: v1
 kind: Service

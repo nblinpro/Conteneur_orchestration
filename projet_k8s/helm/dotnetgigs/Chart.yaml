@@ -1,0 +1,6 @@
+apiVersion: v2
+name: dotnetgigs
+description: Application dotnetgigs (web MVC + 3 API REST + SQL Server + Redis + RabbitMQ) avec Ingress HTTPS, HPA, NetworkPolicies et RBAC.
+type: application
+version: 1.0.0        # version du chart
+appVersion: "1.0"     # version de l'application

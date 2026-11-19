@@ -22,9 +22,11 @@ spec:
               labelSelector:
                 matchLabels: { app: sql-data }
               topologyKey: kubernetes.io/hostname
+      imagePullSecrets:          # identifiants Docker Hub (repo privé)
+      - name: dockerhub-secret
       containers:
       - name: applicants-api
-        image: dotnetgigs/applicants-api:1.0
+        image: nicoter04/dotnetgigs_bd:applicants-api
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80

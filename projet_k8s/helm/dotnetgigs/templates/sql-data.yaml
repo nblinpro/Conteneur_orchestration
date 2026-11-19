@@ -1,0 +1,71 @@
+# SQL Server + script de création des bases dotnetgigs.jobs et dotnetgigs.applicants
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sql-data-pvc
+  labels: {{- include "dotnetgigs.labels" (list "sql-data" "data") | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.sql.storage }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sql-data
+  labels: {{- include "dotnetgigs.labels" (list "sql-data" "data") | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate          # l'ancien pod libère le volume avant le démarrage du nouveau
+  selector:
+    matchLabels:
+      app: sql-data
+  template:
+    metadata:
+      labels: {{- include "dotnetgigs.labels" (list "sql-data" "data") | nindent 8 }}
+    spec:
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: sql-data-pvc
+      imagePullSecrets:
+      - name: {{ .Values.image.pullSecret }}
+      containers:
+      - name: sql-data
+        image: {{ include "dotnetgigs.image" (list $ .Values.sqlData.tag) }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - containerPort: 1433
+        env:
+        - name: ACCEPT_EULA
+          value: "Y"
+        - name: SA_PASSWORD
+          valueFrom: { secretKeyRef: { name: dotnetgigs-secrets, key: SA_PASSWORD } }
+        volumeMounts:
+        - name: data
+          mountPath: /var/opt/mssql
+        resources: {{- toYaml .Values.sqlData.resources | nindent 10 }}
+        readinessProbe:
+          tcpSocket: { port: 1433 }
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket: { port: 1433 }
+          initialDelaySeconds: 60
+          periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sql-data
+  labels: {{- include "dotnetgigs.labels" (list "sql-data" "data") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app: sql-data
+  ports:
+  - port: 1433
+    targetPort: 1433

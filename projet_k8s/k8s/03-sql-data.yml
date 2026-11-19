@@ -20,9 +20,11 @@ spec:
       - name: data
         persistentVolumeClaim:
           claimName: sql-data-pvc
+      imagePullSecrets:          # identifiants Docker Hub (repo privé)
+      - name: dockerhub-secret
       containers:
       - name: sql-data
-        image: dotnetgigs/sql-data:1.0
+        image: nicoter04/dotnetgigs_bd:sql-data
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 1433

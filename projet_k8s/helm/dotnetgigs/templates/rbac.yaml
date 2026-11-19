@@ -1,0 +1,32 @@
+# ServiceAccount dédié à jobs-api, avec des droits restreints (RBAC) :
+# lecture seule des ConfigMaps du namespace, rien d'autre (pas de Secrets, pas de pods...).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: jobs-api-sa
+  labels: { project: dotnetgigs, app: jobs-api, tier: backend }
+automountServiceAccountToken: false   # l'app n'appelle pas l'API Kubernetes : pas de jeton monté
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: jobs-api-role
+  labels: { project: dotnetgigs, app: jobs-api, tier: backend }
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: jobs-api-rolebinding
+  labels: { project: dotnetgigs, app: jobs-api, tier: backend }
+subjects:
+- kind: ServiceAccount
+  name: jobs-api-sa
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  name: jobs-api-role
+  apiGroup: rbac.authorization.k8s.io

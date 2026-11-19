@@ -1,0 +1,28 @@
+# Seul point d'entrée externe : https://dotnetgigs.local -> Service web.
+# Le contrôleur ingress-nginx (addon minikube) n'est pas dans ce fichier.
+# Le certificat vient du Secret TLS "dotnetgigs-tls" (scripts/gen-cert.sh).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dotnetgigs-ingress
+  namespace: dotnetgigs
+  labels: { project: dotnetgigs, app: web, tier: frontend }
+  annotations:
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"   # HTTP -> redirection vers HTTPS
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - dotnetgigs.local
+    secretName: dotnetgigs-tls
+  rules:
+  - host: dotnetgigs.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web
+            port:
+              number: 80

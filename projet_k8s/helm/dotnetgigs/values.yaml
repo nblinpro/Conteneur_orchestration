@@ -1,0 +1,76 @@
+# Valeurs par défaut du chart dotnetgigs.
+# Surcharger à l'installation avec -f mon-fichier.yaml ou --set cle=valeur.
+
+# Repo d'images privé (un seul repo Docker Hub, un tag par application)
+image:
+  repository: nicoter04/dotnetgigs_bd
+  pullPolicy: IfNotPresent
+  pullSecret: dockerhub-secret      # Secret docker-registry créé à la main (voir README)
+
+# Mot de passe SQL Server : imposé par l'image sql-data (script de création des bases)
+sql:
+  saPassword: "Pass@word"
+  storage: 2Gi                      # taille du volume persistant de SQL Server
+
+# Accès externe : HTTPS uniquement, via le contrôleur ingress (non inclus dans le chart)
+ingress:
+  className: nginx
+  host: dotnetgigs.local
+  tlsSecret: dotnetgigs-tls         # Secret TLS créé par scripts/gen-cert.sh
+
+# NetworkPolicies : namespace du contrôleur ingress, seul autorisé à joindre web
+networkPolicy:
+  enabled: true
+  ingressNamespace: ingress-nginx
+
+# Ressources : valeurs imposées par le sujet pour web, les API et user-data
+web:
+  tag: web
+  replicas: 2
+  resources:
+    requests: { cpu: 4m, memory: 900Mi, ephemeral-storage: 100Mi }
+    limits:   { cpu: "1", memory: 2000Mi, ephemeral-storage: 1Gi }
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 3
+    averageCpu: 50m                 # valeur absolue : la request de 4m rend un % inutilisable
+
+jobsApi:
+  tag: jobs-api
+  replicas: 2
+  resources:
+    requests: { cpu: 500m, memory: 500Mi, ephemeral-storage: 100Mi }
+    limits:   { cpu: "1", memory: 1500Mi, ephemeral-storage: 1Gi }
+
+applicantsApi:
+  tag: applicants-api
+  replicas: 2
+  resources:
+    requests: { cpu: 500m, memory: 500Mi, ephemeral-storage: 100Mi }
+    limits:   { cpu: "1", memory: 1500Mi, ephemeral-storage: 1Gi }
+
+identityApi:
+  tag: identity-api
+  replicas: 2
+  resources:
+    requests: { cpu: 500m, memory: 500Mi, ephemeral-storage: 100Mi }
+    limits:   { cpu: "1", memory: 1500Mi, ephemeral-storage: 1Gi }
+
+sqlData:
+  tag: sql-data
+  resources:
+    requests: { cpu: 500m, memory: 2Gi, ephemeral-storage: 100Mi }
+    limits:   { cpu: "2", memory: 3Gi, ephemeral-storage: 1Gi }
+
+userData:
+  image: redis:7-alpine
+  resources:
+    requests: { cpu: 4m, memory: 500Mi, ephemeral-storage: 50Mi }
+    limits:   { cpu: 500m, memory: 1Gi, ephemeral-storage: 500Mi }
+
+rabbitmq:
+  image: rabbitmq:3-management
+  resources:
+    requests: { cpu: 100m, memory: 256Mi, ephemeral-storage: 100Mi }
+    limits:   { cpu: 500m, memory: 512Mi, ephemeral-storage: 1Gi }

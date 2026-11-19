@@ -1,0 +1,84 @@
+# Configuration du chart fluent/fluent-bit : un pod par nœud (DaemonSet) qui lit
+# les logs des conteneurs (sortie standard) et les envoie à Elasticsearch.
+# Installation :
+#   helm repo add fluent https://fluent.github.io/helm-charts
+#   helm upgrade --install fluent-bit fluent/fluent-bit --version 0.58.3 \
+#     -n logging -f logging/fluent-bit-values.yaml
+
+resources:
+  requests: { cpu: 20m, memory: 64Mi }
+  limits:   { cpu: 200m, memory: 128Mi }
+
+config:
+  # Lecture des fichiers de logs des conteneurs du namespace dotnetgigs uniquement
+  inputs: |
+    [INPUT]
+        Name tail
+        Path /var/log/containers/*_dotnetgigs_*.log
+        multiline.parser docker, cri
+        Tag kube.*
+        Mem_Buf_Limit 5MB
+        Skip_Long_Lines On
+
+  # 1. Regroupe les 2 lignes d'un message .NET ("info: catégorie" + texte indenté)
+  # 2. Retire les codes couleur et ajoute le champ "level" (script Lua plus bas)
+  # 3. Ajoute les infos Kubernetes : namespace, pod, labels (app, tier...)
+  filters: |
+    [FILTER]
+        Name multiline
+        Match kube.*
+        multiline.key_content log
+        multiline.parser dotnet
+
+    [FILTER]
+        Name lua
+        Match kube.*
+        script /fluent-bit/scripts/dotnet.lua
+        call clean_log
+
+    [FILTER]
+        Name kubernetes
+        Match kube.*
+        Merge_Log On
+        Keep_Log Off
+        K8S-Logging.Parser On
+        K8S-Logging.Exclude On
+
+  # Une ligne qui ne commence pas par un espace démarre un nouveau message,
+  # les lignes indentées sont la suite du message précédent.
+  customParsers: |
+    [MULTILINE_PARSER]
+        name          dotnet
+        type          regex
+        flush_timeout 2000
+        rule          "start_state"  "/^\S/"   "cont"
+        rule          "cont"         "/^\s+/"  "cont"
+
+  # Envoi vers Elasticsearch, un index par jour : dotnetgigs-AAAA.MM.JJ
+  outputs: |
+    [OUTPUT]
+        Name es
+        Match kube.*
+        Host elasticsearch.logging.svc.cluster.local
+        Port 9200
+        Logstash_Format On
+        Logstash_Prefix dotnetgigs
+        Suppress_Type_Name On
+        Replace_Dots On
+        Retry_Limit 5
+
+# Script Lua (monté dans /fluent-bit/scripts) : retire les codes couleur ANSI
+# et transforme le préfixe .NET (info:, warn:, fail:, crit:) en champ "level".
+luaScripts:
+  dotnet.lua: |
+    local levels = { trce = "TRACE", dbug = "DEBUG", info = "INFO",
+                     warn = "WARNING", fail = "ERROR", crit = "CRITICAL" }
+    function clean_log(tag, timestamp, record)
+      local log = record["log"]
+      if log == nil then return 0, timestamp, record end
+      log = string.gsub(log, "\27%[[%d;]*m", "")
+      record["log"] = log
+      local prefix = string.match(log, "^(%a%a%a%a): ")
+      record["level"] = levels[prefix] or "INFO"
+      return 1, timestamp, record
+    end

@@ -14,6 +14,7 @@ spec:
     metadata:
       labels: { project: dotnetgigs, app: jobs-api, tier: backend }
     spec:
+      serviceAccountName: jobs-api-sa   # compte aux droits restreints (12-rbac.yml)
       affinity:
         podAffinity:              # au plus près de la base de données
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -22,9 +23,11 @@ spec:
               labelSelector:
                 matchLabels: { app: sql-data }
               topologyKey: kubernetes.io/hostname
+      imagePullSecrets:          # identifiants Docker Hub (repo privé)
+      - name: dockerhub-secret
       containers:
       - name: jobs-api
-        image: dotnetgigs/jobs-api:1.0
+        image: nicoter04/dotnetgigs_bd:jobs-api
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80

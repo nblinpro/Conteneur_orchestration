@@ -1,0 +1,78 @@
+# web : site MVC qui appelle identity-api et jobs-api. Exposé uniquement via l'Ingress (ingress.yaml).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  labels: {{- include "dotnetgigs.labels" (list "web" "frontend") | nindent 4 }}
+spec:
+  {{- if not .Values.web.hpa.enabled }}
+  replicas: {{ .Values.web.replicas }}   # avec l'HPA, c'est lui qui fixe le nombre de pods
+  {{- end }}
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels: {{- include "dotnetgigs.labels" (list "web" "frontend") | nindent 8 }}
+    spec:
+      {{- include "dotnetgigs.affinity" (list "jobs-api" "applicants-api") | nindent 6 }}
+      imagePullSecrets:
+      - name: {{ .Values.image.pullSecret }}
+      containers:
+      - name: web
+        image: {{ include "dotnetgigs.image" (list $ .Values.web.tag) }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - containerPort: 80
+        env:
+        - name: ApiSettings__IdentityApiUrl   # remplace http://identity.api (point interdit dans un nom de Service)
+          value: http://identity-api
+        - name: ApiSettings__JobsApiUrl
+          value: http://jobs-api
+        - name: Logging__LogLevel__Default
+          value: Information
+        resources: {{- toYaml .Values.web.resources | nindent 10 }}
+        readinessProbe:
+          httpGet: { path: /Home/About, port: 80 }   # page sans appel aux API
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket: { port: 80 }
+          initialDelaySeconds: 30
+          periodSeconds: 20
+---
+{{- if .Values.web.hpa.enabled }}
+# Autoscaling de web selon le CPU (valeur absolue : la request de 4m rend un % inutilisable)
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: web-hpa
+  labels: {{- include "dotnetgigs.labels" (list "web" "frontend") | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web
+  minReplicas: {{ .Values.web.hpa.minReplicas }}
+  maxReplicas: {{ .Values.web.hpa.maxReplicas }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: AverageValue
+        averageValue: {{ .Values.web.hpa.averageCpu }}
+---
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  labels: {{- include "dotnetgigs.labels" (list "web" "frontend") | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app: web
+  ports:
+  - port: 80
+    targetPort: 80

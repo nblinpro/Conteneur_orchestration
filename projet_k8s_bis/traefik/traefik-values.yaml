@@ -1,0 +1,24 @@
+# Réglages du contrôleur d'ingress Traefik (chart officiel traefik/traefik),
+# le même contrôleur que dans notre TP WordPress.
+# Il est installé à part, hors du chart de l'application (exigence du sujet).
+# Installation : voir README, étape 1.
+#
+# Traefik écoute sur 2 "entrypoints" :
+#   web       = HTTP  (port 80 du Service)
+#   websecure = HTTPS (port 443 du Service)
+
+ports:
+  web:
+    # Sujet : accès uniquement en HTTPS. Toute requête HTTP reçoit une
+    # redirection permanente (301) vers la même adresse en HTTPS.
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+
+# Limites de ressources du pod Traefik
+resources:
+  requests: { cpu: 100m, memory: 64Mi }
+  limits:   { cpu: 500m, memory: 256Mi }

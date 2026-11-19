@@ -1,0 +1,31 @@
+# Ingress : la porte d'entrée du site, en HTTPS (même principe que k8s/wordpress/07-ingress.yml).
+#   navigateur --HTTPS--> contrôleur Traefik --> Service web --> pods web
+# Le contrôleur Traefik n'est PAS dans le chart (demandé par le sujet) :
+# il est installé à part avec traefik/traefik-values.yaml (README, étape 1).
+# La redirection HTTP -> HTTPS est faite par Traefik lui-même (traefik-values.yaml).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dotnetgigs-ingress
+  labels:
+    app: web
+  annotations:
+    # Le site n'est servi que sur l'entrée HTTPS de Traefik
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - {{ .Values.host }}
+      secretName: dotnetgigs-tls      # certificat auto-signé, créé à la main (README étape 3)
+  rules:
+    - host: {{ .Values.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  number: 80

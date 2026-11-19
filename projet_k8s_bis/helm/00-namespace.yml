@@ -1,0 +1,15 @@
+# Namespace du projet : un "dossier" dans le cluster où sont rangées toutes les ressources
+# de l'application. Permet aussi de tout supprimer d'un coup (kubectl delete namespace dotnetgigs).
+#
+# Ce fichier est à côté du chart (et non dans templates/) car il doit exister AVANT
+# l'installation : les Secrets dockerhub-secret et dotnetgigs-tls, créés à la main,
+# y sont rangés avant "helm install". Si le chart le créait aussi, Helm refuserait
+# de s'installer (namespace déjà existant, qui ne lui appartient pas).
+#
+# Utilisation (README, étape 2) : kubectl apply -f helm/00-namespace.yml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dotnetgigs
+  labels:
+    app: dotnetgigs

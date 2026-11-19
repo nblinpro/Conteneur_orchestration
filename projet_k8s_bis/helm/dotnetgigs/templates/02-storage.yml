@@ -1,0 +1,16 @@
+# Stockage persistant de SQL Server.
+# Un pod perd son disque interne quand il est recréé : pour garder les bases,
+# on demande un disque à part avec un PersistentVolumeClaim (PVC).
+# minikube crée automatiquement le disque correspondant (StorageClass "standard").
+# Utilisé par le Deployment sql-data (03-sql-data.yml).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sql-data-pvc
+  labels:
+    app: sql-data
+spec:
+  accessModes: ["ReadWriteOnce"]  # utilisable par un seul nœud à la fois
+  resources:
+    requests:
+      storage: 2Gi

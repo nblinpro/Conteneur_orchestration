@@ -1,0 +1,70 @@
+# sql-data : base SQL Server. Utilisée par jobs-api et applicants-api.
+# 2 objets dans ce fichier, séparés par "---" :
+#   1. Deployment : fait tourner le pod et le recrée s'il tombe
+#   2. Service    : nom réseau fixe "sql-data" pour joindre le pod
+# Le disque des bases est demandé dans 02-storage.yml.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sql-data
+  labels:
+    app: sql-data
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate                # arrête l'ancien pod avant de créer le nouveau (un seul SQL sur le disque)
+  selector:
+    matchLabels:
+      app: sql-data               # ce Deployment gère les pods qui ont ce label
+  template:                       # modèle des pods
+    metadata:
+      labels:
+        app: sql-data
+        tier: data
+    spec:
+      imagePullSecrets:
+      - name: dockerhub-secret    # identifiants pour télécharger depuis le repo privé
+      containers:
+      - name: sql-data
+        image: "{{ .Values.image }}:sql-data"
+        ports:
+        - containerPort: 1433
+        env:
+        - name: ACCEPT_EULA       # obligatoire pour l'image SQL Server
+          value: "Y"
+        - name: SA_PASSWORD       # lu dans le Secret
+          valueFrom:
+            secretKeyRef: { name: dotnetgigs-secrets, key: SA_PASSWORD }
+        volumeMounts:
+        - name: data
+          mountPath: /var/opt/mssql   # là où SQL Server range ses bases
+        # requests = ressources réservées ; limits = maximum autorisé
+        # (pas de valeur imposée par le sujet ; SQL Server a besoin d'au moins 2 Go)
+        resources:
+          requests: { cpu: 500m, memory: 2Gi, ephemeral-storage: 100Mi }
+          limits:   { cpu: "2", memory: 3Gi, ephemeral-storage: 1Gi }
+        # readiness : le pod reçoit du trafic seulement quand le port répond
+        readinessProbe:
+          tcpSocket: { port: 1433 }
+          initialDelaySeconds: 20
+        # liveness : si le port ne répond plus, Kubernetes redémarre le conteneur
+        livenessProbe:
+          tcpSocket: { port: 1433 }
+          initialDelaySeconds: 60
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: sql-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sql-data
+  labels:
+    app: sql-data
+spec:
+  # Pas de "type" = ClusterIP : joignable seulement depuis l'intérieur du cluster
+  selector:
+    app: sql-data
+  ports:
+  - port: 1433

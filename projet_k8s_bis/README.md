@@ -11,9 +11,24 @@ un site web, 3 API REST, une base SQL Server, un Redis et un RabbitMQ.
 
 ```
 appscore/                  code des applications + Dockerfile fournis
+helm/00-namespace.yml      namespace dotnetgigs (créé avant le chart, étape 2)
+traefik/traefik-values.yaml   réglages du contrôleur d'ingress Traefik (installé à part)
 helm/dotnetgigs/           chart Helm = tous les fichiers Kubernetes de l'application
   values.yaml                les 4 valeurs modifiables (image, domaine, réplicas, mot de passe)
-  templates/                 un fichier par élément (web.yaml, jobs-api.yaml, ingress.yaml...)
+  templates/                 un fichier numéroté par élément (même découpage que k8s/wordpress) :
+    01-secret.yml              mots de passe (SQL, chaînes de connexion)
+    02-storage.yml             disque persistant de SQL Server
+    03-sql-data.yml            SQL Server        (Deployment + Service)
+    04-user-data.yml           Redis             (Deployment + Service)
+    05-rabbitmq.yml            RabbitMQ          (Deployment + Service)
+    06-jobs-api.yml            API offres        (Deployment + Service)
+    07-applicants-api.yml      API candidats     (Deployment + Service)
+    08-identity-api.yml        API identité      (Deployment + Service)
+    09-web.yml                 site web          (Deployment + Service)
+    10-hpa.yml                 autoscaling de web
+    11-networkpolicies.yml     pare-feu entre les pods
+    12-ingress.yml             entrée HTTPS du site
+    13-rbac.yml                compte à droits limités pour jobs-api
 monitoring/                réglages de Prometheus
 logging/                   Elasticsearch, Kibana, Fluent Bit + dashboard Kibana
 scripts/load-generator.yml pod qui génère de la charge (démo de l'HPA)
@@ -41,17 +56,17 @@ le point est interdit dans un nom de Service Kubernetes.
 | Partie du sujet | Fichier(s) | En bref |
 |---|---|---|
 | Conteneur | `appscore/*/Dockerfile` | images poussées dans le repo privé Docker Hub `nicoter04/dotnetgigs_bd` |
-| Hébergement | `templates/*.yaml` | un Deployment + un Service par application, labels `app` et `tier` |
-| Seul web ouvert à l'extérieur | `templates/ingress.yaml` | tous les Services sont internes (ClusterIP), l'Ingress expose web |
+| Hébergement | `templates/03` à `09` | un Deployment + un Service par application, labels `app` et `tier` |
+| Seul web ouvert à l'extérieur | `templates/12-ingress.yml` | tous les Services sont internes (ClusterIP), l'Ingress expose web |
 | Ressources (requests / limits) | `resources:` dans chaque Deployment | valeurs du sujet ; CPU, mémoire et disque (`ephemeral-storage`) |
 | Redémarrage automatique | `livenessProbe` + Deployment | un conteneur qui ne répond plus est redémarré |
 | Affinités | `affinity:` dans web, jobs-api, applicants-api, identity-api | web → API ; API → sql-data ; identity-api → user-data |
-| Scalabilité | `templates/hpa.yaml` | web passe de 2 à 3 pods quand le CPU monte |
+| Scalabilité | `templates/10-hpa.yml` | web passe de 2 à 3 pods quand le CPU monte |
 | Sondes | `readinessProbe` / `livenessProbe` | dans chaque Deployment |
 | Métriques | `monitoring/prometheus-values.yaml` | Prometheus + kube-state-metrics + node-exporter + metrics-server |
-| HTTPS | `templates/ingress.yaml` + étape 3 | certificat auto-signé, HTTP redirigé vers HTTPS |
-| ServiceAccount + RBAC | `templates/rbac.yaml` | jobs-api ne peut que lire les ConfigMaps |
-| NetworkPolicy | `templates/networkpolicy.yaml` | seules les API parlent à SQL ; seul web parle à identity-api |
+| HTTPS | `templates/12-ingress.yml` + `traefik/traefik-values.yaml` + étape 3 | contrôleur Traefik, certificat auto-signé, HTTP redirigé vers HTTPS |
+| ServiceAccount + RBAC | `templates/13-rbac.yml` | jobs-api ne peut que lire les ConfigMaps |
+| NetworkPolicy | `templates/11-networkpolicies.yml` | seules les API parlent à SQL ; seul web parle à identity-api |
 | Logs (EFK) | `logging/` | Fluent Bit → Elasticsearch → Kibana (dashboard + recherche d'erreurs) |
 | Helm | `helm/dotnetgigs/` | tout le déploiement en une commande, sans contrôleur d'ingress |
 
@@ -80,80 +95,122 @@ cd ..
 
 Docker Hub gratuit n'autorise qu'un seul repo privé : les 5 images sont dans le même repo, avec un tag différent.
 
-## 5. Déployer sur un cluster vierge
+## 5. Déployer depuis zéro
 
-Prérequis : Docker, minikube, kubectl, Helm. VM conseillée : 6 CPU, 15 Go de RAM, 50 Go de disque.
+Prérequis : Docker, minikube, kubectl, Helm, les images publiées (section 4) et un `docker login` fait.
+VM conseillée : 6 CPU, 15 Go de RAM, 50 Go de disque. Toutes les commandes se lancent depuis le dossier `projet_k8s_bis`.
 
-**Étape 1 : démarrer le cluster**
+### 0. Tout supprimer
+
+```bash
+cd ~/Conteneur_orchestration/projet_k8s_bis
+pkill -f port-forward          # arrête les port-forward encore ouverts
+minikube delete                # supprime tout le cluster : appli, Traefik, Prometheus, EFK, volumes
+rm -rf certs                   # supprime l'ancien certificat
+```
+
+Restent en place : les images sur Docker Hub, le `docker login` et les fichiers du projet.
+
+### 1. Cluster + contrôleur Traefik
 
 ```bash
 minikube start --cpus=4 --memory=11g --disk-size=40g
-minikube addons enable metrics-server     # mesure le CPU (utilisé par l'HPA)
-minikube addons enable ingress            # contrôleur d'ingress (hors chart, demandé par le sujet)
+minikube addons enable metrics-server
+helm repo add traefik https://traefik.github.io/charts
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo add fluent https://fluent.github.io/helm-charts
+helm repo update
+helm upgrade --install traefik traefik/traefik --version 42.4.1 -n traefik --create-namespace -f traefik/traefik-values.yaml
+kubectl rollout status deploy/traefik -n traefik --timeout=180s
 ```
 
-**Étape 2 : namespace + accès au repo privé**
+metrics-server mesure le CPU des pods (utilisé par l'HPA). Traefik est le contrôleur d'ingress : il est installé à part, hors du chart de l'application (exigence du sujet).
+
+### 2. Namespace + accès au repo privé
 
 ```bash
-kubectl create namespace dotnetgigs
-kubectl create secret generic dockerhub-secret -n dotnetgigs \
-  --from-file=.dockerconfigjson=$HOME/.docker/config.json \
-  --type=kubernetes.io/dockerconfigjson
+kubectl apply -f helm/00-namespace.yml
+kubectl create secret generic dockerhub-secret -n dotnetgigs --from-file=.dockerconfigjson=$HOME/.docker/config.json --type=kubernetes.io/dockerconfigjson
 ```
 
-Ce Secret reprend les identifiants enregistrés par `docker login`. Il n'est pas dans le chart pour ne pas mettre de mot de passe dans Git.
+Le namespace (`helm/00-namespace.yml`, comme le `00-namespace.yml` de k8s/wordpress) est créé avant le chart,
+car les 2 Secrets de cette étape et de la suivante doivent y être rangés avant l'installation.
+Le Secret `dockerhub-secret` reprend les identifiants enregistrés par `docker login` : il n'est pas dans le chart pour ne pas mettre de mot de passe dans Git.
 
-**Étape 3 : certificat HTTPS auto-signé**
+### 3. Certificat HTTPS
 
 ```bash
 mkdir -p certs
-openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
-  -keyout certs/tls.key -out certs/tls.crt \
-  -subj "/CN=dotnetgigs.local" -addext "subjectAltName=DNS:dotnetgigs.local"
+openssl req -x509 -nodes -newkey rsa:2048 -days 365 -keyout certs/tls.key -out certs/tls.crt -subj "/CN=dotnetgigs.local" -addext "subjectAltName=DNS:dotnetgigs.local"
 kubectl create secret tls dotnetgigs-tls -n dotnetgigs --cert=certs/tls.crt --key=certs/tls.key
 ```
 
-La première commande crée la clé privée (`tls.key`) et le certificat (`tls.crt`).
-La seconde les range dans le Secret `dotnetgigs-tls` utilisé par l'Ingress.
+La première commande crée la clé privée (`tls.key`) et le certificat auto-signé (`tls.crt`) ; la seconde les range dans le Secret `dotnetgigs-tls` utilisé par l'Ingress.
 Le dossier `certs/` n'est pas envoyé sur Git (il contient la clé privée).
 
-**Étape 4 : l'application (Helm)**
+### 4. L'application
 
 ```bash
 helm upgrade --install dotnetgigs helm/dotnetgigs -n dotnetgigs
-kubectl get pods -n dotnetgigs -w          # Ctrl+C pour quitter
+kubectl get pods -n dotnetgigs -w
 ```
 
-Les API redémarrent 3 ou 4 fois au début : elles plantent tant que SQL Server et RabbitMQ ne sont pas prêts,
-puis Kubernetes les relance automatiquement. Au bout de 2 à 3 minutes, tout est en `1/1 Running`.
+Attendre que les 11 pods soient en `1/1 Running`, environ 2 à 3 minutes, puis quitter avec `Ctrl+C`.
+Quelques redémarrages au début sont normaux : les API plantent tant que SQL Server et RabbitMQ ne sont pas prêts, puis Kubernetes les relance automatiquement.
 
-**Étape 5 : Prometheus**
+### 5. Prometheus
 
 ```bash
-helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm repo update
 helm upgrade --install prometheus prometheus-community/prometheus --version 29.47.2 -n monitoring --create-namespace -f monitoring/prometheus-values.yaml
 ```
 
-**Étape 6 : logs (EFK)**
+### 6. Logs (EFK)
 
 ```bash
 kubectl apply -f logging/elasticsearch.yaml
 kubectl apply -f logging/kibana.yaml
-# Attendre qu'Elasticsearch soit prêt AVANT d'installer Fluent Bit (sinon les premiers logs sont perdus)
 kubectl wait --for=condition=Ready pod -l app=elasticsearch -n logging --timeout=300s
-helm repo add fluent https://fluent.github.io/helm-charts
 helm upgrade --install fluent-bit fluent/fluent-bit --version 0.58.3 -n logging -f logging/fluent-bit-values.yaml
-
-# Quand Kibana est prêt : import du dashboard et de la recherche d'erreurs
 kubectl wait --for=condition=Ready pod -l app=kibana -n logging --timeout=300s
+```
+
+Fluent Bit est installé seulement quand Elasticsearch est prêt : sinon les premiers logs sont perdus.
+Puis l'import du dashboard Kibana :
+
+```bash
 kubectl port-forward -n logging svc/kibana 5601:5601 &
 sleep 3
 curl -X POST "http://localhost:5601/api/saved_objects/_import?overwrite=true" -H "kbn-xsrf: true" --form file=@logging/kibana-objects.ndjson
 kill %1
 ```
 
-**Tout supprimer** : `minikube delete` (puis recommencer à l'étape 1).
+La réponse doit contenir `"successCount":5,"success":true`.
+
+### 7. Accès depuis le PC (un terminal par commande)
+
+```bash
+kubectl port-forward --address 0.0.0.0 -n traefik svc/traefik 8443:443
+kubectl port-forward --address 0.0.0.0 -n monitoring svc/prometheus-server 9090:80
+kubectl port-forward --address 0.0.0.0 -n logging svc/kibana 5601:5601
+```
+
+| Outil | Adresse depuis le PC |
+|---|---|
+| Site | `https://dotnetgigs.local:8443` |
+| Prometheus | `http://192.168.80.136:9090` |
+| Kibana | `http://192.168.80.136:5601` |
+
+`192.168.80.136` est l'adresse de notre VM : la remplacer par celle de la machine qui héberge minikube (voir section 6 pour le fichier hosts).
+
+### 8. Vérifications rapides
+
+```bash
+kubectl get pods -A                                   # tout en Running
+kubectl get hpa,ingress,networkpolicy -n dotnetgigs
+kubectl exec -n logging deploy/elasticsearch -c elasticsearch -- curl -s 'localhost:9200/_cat/indices/dotnetgigs-*?v'
+```
+
+Pour la dernière commande, visiter d'abord le site une ou deux fois pour que des logs existent (ligne `dotnetgigs-AAAA.MM.JJ` avec `docs.count` > 0).
 
 ## 6. Accéder aux applications
 
@@ -161,7 +218,7 @@ minikube tourne dans une VM : on ouvre un port-forward par outil (un terminal ch
 
 | Outil | Commande | Adresse depuis le PC |
 |---|---|---|
-| Site (HTTPS) | `kubectl port-forward --address 0.0.0.0 -n ingress-nginx svc/ingress-nginx-controller 8443:443` | `https://dotnetgigs.local:8443` |
+| Site (HTTPS) | `kubectl port-forward --address 0.0.0.0 -n traefik svc/traefik 8443:443` | `https://dotnetgigs.local:8443` |
 | Prometheus | `kubectl port-forward --address 0.0.0.0 -n monitoring svc/prometheus-server 9090:80` | `http://<IP de la VM>:9090` |
 | Kibana | `kubectl port-forward --address 0.0.0.0 -n logging svc/kibana 5601:5601` | `http://<IP de la VM>:5601` |
 

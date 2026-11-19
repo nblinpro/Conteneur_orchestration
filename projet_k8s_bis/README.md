@@ -18,6 +18,7 @@ monitoring/                réglages de Prometheus
 logging/                   Elasticsearch, Kibana, Fluent Bit + dashboard Kibana
 scripts/load-generator.yml pod qui génère de la charge (démo de l'HPA)
 docs/architecture.png      schéma d'architecture
+docs/choix-ingress-networkpolicy.md   explication des choix Ingress et NetworkPolicies
 ```
 
 ## 2. Les applications
@@ -53,6 +54,8 @@ le point est interdit dans un nom de Service Kubernetes.
 | NetworkPolicy | `templates/networkpolicy.yaml` | seules les API parlent à SQL ; seul web parle à identity-api |
 | Logs (EFK) | `logging/` | Fluent Bit → Elasticsearch → Kibana (dashboard + recherche d'erreurs) |
 | Helm | `helm/dotnetgigs/` | tout le déploiement en une commande, sans contrôleur d'ingress |
+
+Les choix pour l'Ingress et les NetworkPolicies sont expliqués dans [docs/choix-ingress-networkpolicy.md](docs/choix-ingress-networkpolicy.md).
 
 ## 4. Builder et publier les images
 

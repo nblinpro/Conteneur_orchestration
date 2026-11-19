@@ -159,10 +159,38 @@ helm upgrade --install fluent-bit fluent/fluent-bit --version 0.58.3 \
 # Quand Kibana est prêt : import du dashboard et des recherches
 kubectl wait --for=condition=Ready pod -l app=kibana -n logging --timeout=300s
 kubectl port-forward -n logging svc/kibana 5601:5601 &
+sleep 3
 curl -X POST "http://localhost:5601/api/saved_objects/_import?overwrite=true" \
   -H "kbn-xsrf: true" --form file=@logging/kibana-objects.ndjson
 kill %1
 ```
+
+### 5.5 Tout supprimer et redéployer de zéro
+
+**Réinitialisation complète** (cluster recréé, état identique à un cluster vierge). Sont conservés : les images sur Docker Hub, le `docker login` (`~/.docker/config.json`) et les fichiers du dépôt.
+
+```bash
+pkill -f port-forward        # arrête les port-forward encore ouverts
+minikube delete              # supprime tout le cluster : apps, volumes, monitoring, logs
+
+minikube start --cpus=4 --memory=11g --disk-size=40g
+minikube addons enable metrics-server
+minikube addons enable ingress
+kubectl wait --for=condition=Ready pod -l app.kubernetes.io/component=controller -n ingress-nginx --timeout=300s
+```
+
+Puis reprendre les étapes [5.1](#51-namespace-et-secrets-créés-à-la-main) à [5.4](#54-logs-efk) dans l'ordre. Au premier démarrage, minikube retélécharge toutes les images depuis Docker Hub : c'est plus long.
+
+**Variante légère** (sans recréer le cluster) : supprime uniquement ce que le projet a installé.
+
+```bash
+helm uninstall dotnetgigs -n dotnetgigs
+helm uninstall prometheus -n monitoring
+helm uninstall fluent-bit -n logging
+kubectl delete namespace dotnetgigs monitoring logging
+```
+
+Puis reprendre à l'étape 5.1.
 
 ## 6. Accéder aux applications
 

@@ -20,3 +20,6 @@ dist/
 
 # Archives de rendu
 *.zip
+
+# Certificats générés (clé privée)
+projet_k8s/certs/

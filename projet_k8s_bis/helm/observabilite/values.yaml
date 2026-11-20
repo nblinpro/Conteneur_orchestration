@@ -1,0 +1,148 @@
+# Valeurs du chart observabilite : tous les réglages de la surveillance et des logs,
+# dont les ressources (CPU, mémoire) de chaque composant, réunies ici.
+# Le sujet n'impose pas de valeurs pour ces outils ; la règle générale s'applique :
+# chaque pod a des requests et des limits. Les valeurs sont choisies pour tenir dans la VM.
+#
+# Une section par composant :
+#   elasticsearch, kibana  : lus par nos modèles (templates/)
+#   prometheus, fluent-bit : transmis aux charts officiels (dépendances, voir Chart.yaml)
+
+# -----------------------------------------------------------------------------
+# Elasticsearch : stockage des logs (templates/01-elasticsearch.yml)
+# -----------------------------------------------------------------------------
+elasticsearch:
+  image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+  storage: 5Gi                      # disque persistant des logs
+  javaOpts: "-Xms512m -Xmx512m"     # mémoire Java : 512 Mo
+  resources:
+    requests: { cpu: 250m, memory: 1Gi, ephemeral-storage: 100Mi }
+    limits:   { cpu: "1", memory: 1536Mi, ephemeral-storage: 1Gi }
+
+# -----------------------------------------------------------------------------
+# Kibana : interface de recherche et dashboards (templates/02-kibana.yml)
+# -----------------------------------------------------------------------------
+kibana:
+  image: docker.elastic.co/kibana/kibana:8.15.3
+  resources:
+    requests: { cpu: 100m, memory: 512Mi, ephemeral-storage: 100Mi }
+    limits:   { cpu: "1", memory: 1Gi, ephemeral-storage: 1Gi }
+
+# -----------------------------------------------------------------------------
+# Prometheus (chart officiel prometheus-community/prometheus)
+#   server               : collecte et stocke les métriques (apiserver, kubelet, cAdvisor)
+#   kube-state-metrics   : état du cluster (pods, deployments, HPA...)
+#   node-exporter        : ressources du nœud (CPU, RAM, disque)
+# -----------------------------------------------------------------------------
+prometheus:
+  server:
+    fullnameOverride: prometheus-server   # nom du Service (au lieu de "observabilite-prometheus-server")
+    retention: "2d"                 # garde 2 jours de métriques
+    persistentVolume:
+      size: 2Gi
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits:   { cpu: 500m, memory: 1Gi }
+  configmapReload:                  # petit conteneur qui recharge la config de Prometheus
+    prometheus:
+      resources:
+        requests: { cpu: 5m, memory: 16Mi }
+        limits:   { cpu: 50m, memory: 32Mi }
+  kube-state-metrics:
+    resources:
+      requests: { cpu: 10m, memory: 32Mi }
+      limits:   { cpu: 100m, memory: 128Mi }
+  prometheus-node-exporter:
+    resources:
+      requests: { cpu: 10m, memory: 16Mi }
+      limits:   { cpu: 100m, memory: 64Mi }
+  # Inutiles pour le projet : désactivés pour économiser de la mémoire
+  alertmanager:
+    enabled: false
+  prometheus-pushgateway:
+    enabled: false
+
+# -----------------------------------------------------------------------------
+# Fluent Bit (chart officiel fluent/fluent-bit) : un pod par nœud qui lit les logs
+# des conteneurs et les envoie à Elasticsearch.
+# Chemin d'un log : INPUT (lecture) -> FILTER (nettoyage) -> OUTPUT (envoi)
+# -----------------------------------------------------------------------------
+fluent-bit:
+  fullnameOverride: fluent-bit
+  resources:
+    requests: { cpu: 20m, memory: 64Mi }
+    limits:   { cpu: 200m, memory: 128Mi }
+
+  config:
+    # INPUT : lire les fichiers de logs des conteneurs du namespace dotnetgigs
+    inputs: |
+      [INPUT]
+          Name tail
+          Path /var/log/containers/*_dotnetgigs_*.log
+          multiline.parser docker, cri
+          Tag kube.*
+          Mem_Buf_Limit 5MB
+          Skip_Long_Lines On
+
+    # FILTERS :
+    #   1. multiline  : .NET écrit chaque message sur 2 lignes, on les recolle
+    #   2. lua        : enlève les codes couleur et crée le champ "level" (INFO, ERROR...)
+    #   3. kubernetes : ajoute le nom du pod, le namespace et les labels (app, tier)
+    filters: |
+      [FILTER]
+          Name multiline
+          Match kube.*
+          multiline.key_content log
+          multiline.parser dotnet
+
+      [FILTER]
+          Name lua
+          Match kube.*
+          script /fluent-bit/scripts/dotnet.lua
+          call clean_log
+
+      [FILTER]
+          Name kubernetes
+          Match kube.*
+          Merge_Log On
+          Keep_Log Off
+
+    # Règle du filtre multiline : une ligne qui commence par un espace
+    # est la suite de la ligne précédente
+    customParsers: |
+      [MULTILINE_PARSER]
+          name          dotnet
+          type          regex
+          flush_timeout 2000
+          rule          "start_state"  "/^\S/"   "cont"
+          rule          "cont"         "/^\s+/"  "cont"
+
+    # OUTPUT : envoi à Elasticsearch (même namespace), un index par jour (dotnetgigs-AAAA.MM.JJ).
+    # Retry_Limit no_limits : tout est installé en même temps, Elasticsearch démarre après
+    # Fluent Bit ; celui-ci réessaie donc sans limite au lieu de perdre les premiers logs.
+    outputs: |
+      [OUTPUT]
+          Name es
+          Match kube.*
+          Host elasticsearch
+          Port 9200
+          Logstash_Format On
+          Logstash_Prefix dotnetgigs
+          Suppress_Type_Name On
+          Replace_Dots On
+          Retry_Limit no_limits
+
+  # Script Lua du filtre 2 : .NET commence ses messages par "info:", "warn:", "fail:"...
+  # On le traduit en champ "level" pour pouvoir filtrer les erreurs dans Kibana (level : ERROR).
+  luaScripts:
+    dotnet.lua: |
+      local levels = { trce = "TRACE", dbug = "DEBUG", info = "INFO",
+                       warn = "WARNING", fail = "ERROR", crit = "CRITICAL" }
+      function clean_log(tag, timestamp, record)
+        local log = record["log"]
+        if log == nil then return 0, timestamp, record end
+        log = string.gsub(log, "\27%[[%d;]*m", "")
+        record["log"] = log
+        local prefix = string.match(log, "^(%a%a%a%a): ")
+        record["level"] = levels[prefix] or "INFO"
+        return 1, timestamp, record
+      end

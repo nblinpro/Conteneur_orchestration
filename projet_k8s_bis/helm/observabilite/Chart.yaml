@@ -1,0 +1,23 @@
+# Chart "parapluie" de l'observabilité : la surveillance (Prometheus) et les logs (EFK).
+# Il est installé à part de l'application (chart dotnetgigs), avant elle.
+#
+# Il contient :
+#   - 2 charts officiels en dépendances (téléchargés par "helm dependency build") :
+#       prometheus  : Prometheus + kube-state-metrics + node-exporter
+#       fluent-bit  : collecte des logs des conteneurs
+#   - 2 modèles à nous (templates/) : Elasticsearch et Kibana
+# Toutes leurs ressources (CPU, mémoire) sont réglées dans un seul fichier : values.yaml
+apiVersion: v2
+name: observabilite
+description: Surveillance (Prometheus) et logs (Elasticsearch, Fluent Bit, Kibana) du projet dotnetgigs
+type: application
+version: 1.0.0
+appVersion: "1.0"
+
+dependencies:
+  - name: prometheus
+    version: 29.47.2
+    repository: https://prometheus-community.github.io/helm-charts
+  - name: fluent-bit
+    version: 0.58.3
+    repository: https://fluent.github.io/helm-charts

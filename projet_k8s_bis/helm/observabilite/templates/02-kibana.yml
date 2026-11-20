@@ -1,11 +1,10 @@
 # Kibana : le site web pour chercher dans les logs et faire des dashboards.
-# Installation : kubectl apply -f logging/kibana.yaml
-# Accès        : kubectl port-forward --address 0.0.0.0 -n logging svc/kibana 5601:5601
+# Réglages (image, ressources) : values.yaml, section kibana.
+# Accès : kubectl port-forward --address 0.0.0.0 -n observabilite svc/kibana 5601:5601
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: kibana
-  namespace: logging
   labels:
     app: kibana
 spec:
@@ -21,15 +20,15 @@ spec:
     spec:
       containers:
       - name: kibana
-        image: docker.elastic.co/kibana/kibana:8.15.3
+        image: {{ .Values.kibana.image }}
         ports:
         - containerPort: 5601
         env:
         - name: ELASTICSEARCH_HOSTS
-          value: http://elasticsearch:9200    # le Service Elasticsearch
+          value: http://elasticsearch:9200    # le Service Elasticsearch (même namespace)
+        # Ressources lues dans values.yaml (kibana.resources)
         resources:
-          requests: { cpu: 100m, memory: 512Mi, ephemeral-storage: 100Mi }
-          limits:   { cpu: "1", memory: 1Gi, ephemeral-storage: 1Gi }
+          {{- toYaml .Values.kibana.resources | nindent 10 }}
         # Prêt seulement quand l'API de Kibana répond : Kibana ouvre son port bien avant
         # d'avoir fini de démarrer (il répond alors "not ready yet"), un test TCP ne suffit pas
         readinessProbe:
@@ -44,7 +43,8 @@ apiVersion: v1
 kind: Service
 metadata:
   name: kibana
-  namespace: logging
+  labels:
+    app: kibana
 spec:
   selector:
     app: kibana

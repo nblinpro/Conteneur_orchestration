@@ -33,6 +33,13 @@ projet_k8s_bis/
 │   ├── 00-namespace.yml            namespace dotnetgigs (créé avant le chart, étape 2)
 │   ├── secrets.enc.yaml            mot de passe SQL, chiffré avec SOPS (section 6)
 │   ├── secrets.example.yaml        exemple du contenu une fois déchiffré
+│   ├── observabilite/              chart Helm de la surveillance et des logs (installé à part)
+│   │   ├── Chart.yaml              dépendances : charts officiels prometheus et fluent-bit
+│   │   ├── values.yaml             TOUS les réglages et ressources : Prometheus, Elasticsearch, Kibana, Fluent Bit
+│   │   ├── templates/
+│   │   │   ├── 01-elasticsearch.yml    stockage des logs (PVC + Deployment + Service)
+│   │   │   └── 02-kibana.yml           interface de recherche et dashboards
+│   │   └── kibana-objects.ndjson   dashboard + recherche d'erreurs à importer dans Kibana
 │   └── dotnetgigs/                 chart Helm de l'application
 │       ├── Chart.yaml              nom et version du chart
 │       ├── values.yaml             valeurs modifiables : image, domaine, réplicas, ressources
@@ -51,14 +58,9 @@ projet_k8s_bis/
 │           ├── 12-ingress.yml          entrée HTTPS du site
 │           └── 13-rbac.yml             compte à droits limités pour jobs-api
 ├── traefik/traefik-values.yaml     réglages du contrôleur d'ingress Traefik (installé hors du chart)
-├── monitoring/prometheus-values.yaml   réglages de Prometheus
-├── logging/
-│   ├── elasticsearch.yaml          stockage des logs
-│   ├── kibana.yaml                 interface de recherche et dashboards
-│   ├── fluent-bit-values.yaml      collecte des logs des conteneurs
-│   └── kibana-objects.ndjson       dashboard + recherche d'erreurs à importer dans Kibana
 ├── scripts/load-generator.yml      pod qui génère de la charge (démo de l'HPA)
 ├── docs/architecture.png           schéma d'architecture (source : architecture.svg)
+├── docs/SOURCES.md                 sources et documentation officielle utilisées
 ├── .sops.yaml                      configuration de SOPS (clé publique de chiffrement)
 ├── age-keys.example.txt            exemple du format de la clé privée age (fausse clé)
 ├── AUTHORS.TXT                     membres du groupe et responsabilités
@@ -81,7 +83,7 @@ Les noms `jobs.api`, `user.data`... du docker-compose deviennent `jobs-api`, `us
 le point est interdit dans un nom de Service Kubernetes. Les adresses des API dans le code de web sont donc
 remplacées par des variables d'environnement (`ApiSettings__JobsApiUrl=http://jobs-api`...).
 
-Namespaces : `dotnetgigs` (application), `traefik` (contrôleur d'ingress), `monitoring` (Prometheus), `logging` (EFK).
+Namespaces : `dotnetgigs` (application), `traefik` (contrôleur d'ingress), `observabilite` (Prometheus et EFK).
 
 ## 3. Où est traitée chaque partie du sujet
 
@@ -95,11 +97,11 @@ Namespaces : `dotnetgigs` (application), `traefik` (contrôleur d'ingress), `mon
 | Affinités | `affinity:` dans `06` à `09` | web → API ; jobs-api / applicants-api → sql-data ; identity-api → user-data |
 | Scalabilité | `templates/10-hpa.yml` | web passe de 2 à 3 pods quand le CPU monte |
 | Sondes | `readinessProbe` / `livenessProbe` | dans chaque Deployment |
-| Métriques | `monitoring/prometheus-values.yaml` | Prometheus + kube-state-metrics + node-exporter + metrics-server |
+| Métriques | `helm/observabilite/` (section `prometheus`) | Prometheus + kube-state-metrics + node-exporter + metrics-server |
 | HTTPS | `templates/12-ingress.yml` + `traefik/traefik-values.yaml` | contrôleur Traefik, certificat auto-signé, HTTP redirigé vers HTTPS |
 | ServiceAccount + RBAC | `templates/13-rbac.yml` | jobs-api ne peut que lire les ConfigMaps |
 | NetworkPolicy | `templates/11-networkpolicies.yml` | seules les API parlent à SQL ; seul web parle à identity-api |
-| Logs (EFK) | `logging/` | Fluent Bit → Elasticsearch → Kibana (dashboard + recherche d'erreurs) |
+| Logs (EFK) | `helm/observabilite/` | Fluent Bit → Elasticsearch → Kibana (dashboard + recherche d'erreurs) |
 | Déploiement automatisé | `helm/dotnetgigs/` | toute l'application en une commande, sans contrôleur d'ingress |
 | Mots de passe | `helm/secrets.enc.yaml` | mot de passe SQL chiffré avec SOPS + age (section 6) |
 
@@ -234,28 +236,25 @@ Si le terminal répond `Command 'sops' not found` : `source ~/.bashrc` (voir sec
 Attendre que les 11 pods soient en `1/1 Running` (2 à 3 minutes), puis quitter avec `Ctrl+C`.
 Quelques redémarrages des API au début sont normaux : elles plantent tant que SQL Server et RabbitMQ ne sont pas prêts, puis Kubernetes les relance automatiquement.
 
-### Étape 5 : Prometheus
+### Étape 5 : surveillance et logs (chart observabilite)
 
 ```bash
-helm upgrade --install prometheus prometheus-community/prometheus --version 29.47.2 -n monitoring --create-namespace -f monitoring/prometheus-values.yaml
+helm dependency build helm/observabilite
+kubectl create namespace observabilite
+helm upgrade --install observabilite helm/observabilite -n observabilite
+kubectl wait --for=condition=Ready pod --all -n observabilite --timeout=400s
 ```
 
-### Étape 6 : logs (EFK)
+`helm dependency build` télécharge les 2 charts officiels déclarés dans `helm/observabilite/Chart.yaml` (prometheus et fluent-bit).
+Une seule commande installe ensuite Prometheus (+ kube-state-metrics et node-exporter), Elasticsearch, Kibana et Fluent Bit.
+Leurs réglages et ressources sont tous dans `helm/observabilite/values.yaml`.
+
+Puis l'import du dashboard Kibana :
 
 ```bash
-kubectl apply -f logging/elasticsearch.yaml
-kubectl apply -f logging/kibana.yaml
-kubectl wait --for=condition=Ready pod -l app=elasticsearch -n logging --timeout=300s
-helm upgrade --install fluent-bit fluent/fluent-bit --version 0.58.3 -n logging -f logging/fluent-bit-values.yaml
-kubectl wait --for=condition=Ready pod -l app=kibana -n logging --timeout=300s
-```
-
-Fluent Bit est installé seulement quand Elasticsearch est prêt : sinon les premiers logs sont perdus. Puis l'import du dashboard Kibana :
-
-```bash
-kubectl port-forward -n logging svc/kibana 5601:5601 &
+kubectl port-forward -n observabilite svc/kibana 5601:5601 &
 sleep 3
-curl -X POST "http://localhost:5601/api/saved_objects/_import?overwrite=true" -H "kbn-xsrf: true" --form file=@logging/kibana-objects.ndjson
+curl -X POST "http://localhost:5601/api/saved_objects/_import?overwrite=true" -H "kbn-xsrf: true" --form file=@helm/observabilite/kibana-objects.ndjson
 kill %1
 ```
 
@@ -267,8 +266,8 @@ minikube tourne dans une VM : on ouvre un port-forward par outil (un terminal ch
 
 ```bash
 kubectl port-forward --address 0.0.0.0 -n traefik svc/traefik 8443:443
-kubectl port-forward --address 0.0.0.0 -n monitoring svc/prometheus-server 9090:80
-kubectl port-forward --address 0.0.0.0 -n logging svc/kibana 5601:5601
+kubectl port-forward --address 0.0.0.0 -n observabilite svc/prometheus-server 9090:80
+kubectl port-forward --address 0.0.0.0 -n observabilite svc/kibana 5601:5601
 ```
 
 | Outil | Adresse depuis le PC |
@@ -301,7 +300,7 @@ kubectl auth can-i get configmaps -n dotnetgigs --as=system:serviceaccount:dotne
 kubectl auth can-i list secrets   -n dotnetgigs --as=system:serviceaccount:dotnetgigs:jobs-api-sa   # no
 
 # Logs bien arrivés dans Elasticsearch (visiter le site avant) : docs.count > 0
-kubectl exec -n logging deploy/elasticsearch -c elasticsearch -- curl -s 'localhost:9200/_cat/indices/dotnetgigs-*?v'
+kubectl exec -n observabilite deploy/elasticsearch -c elasticsearch -- curl -s 'localhost:9200/_cat/indices/dotnetgigs-*?v'
 ```
 
 **Prometheus** : menu Status → Target health (tout doit être `UP`), puis onglet Query :
@@ -329,7 +328,7 @@ rm -rf certs                   # supprime l'ancien certificat
 ```
 
 Restent en place : les images sur Docker Hub, le `docker login`, la clé age et les fichiers du projet.
-Pour relancer : refaire la section 7 dans l'ordre (étapes 1 à 6), puis la section 8.
+Pour relancer : refaire la section 7 dans l'ordre (étapes 1 à 5), puis la section 8.
 
 ### Supprimer et relancer seulement l'application (sans recréer le cluster)
 
@@ -347,10 +346,9 @@ Pour relancer : refaire les étapes 2, 3 et 4 de la section 7.
 ```bash
 pkill -f port-forward
 helm uninstall dotnetgigs -n dotnetgigs
-helm uninstall fluent-bit -n logging
-helm uninstall prometheus -n monitoring
+helm uninstall observabilite -n observabilite
 helm uninstall traefik -n traefik
-kubectl delete namespace dotnetgigs logging monitoring traefik
+kubectl delete namespace dotnetgigs observabilite traefik
 rm -rf certs
 ```
 
@@ -429,6 +427,21 @@ Le plugin réseau de minikube (kindnet) applique bien ces règles.
 Les requests / limits de toutes les applications sont dans la section `resources` de `values.yaml` :
 les valeurs du sujet se vérifient au même endroit, et chaque Deployment les recopie avec `toYaml .Values.resources.<app>`.
 Elles se modifient sans toucher aux modèles, par exemple `--set resources.web.limits.memory=3000Mi`.
+
+### Surveillance et logs : un chart « observabilite » séparé
+
+Prometheus, Elasticsearch, Kibana et Fluent Bit sont regroupés dans un chart parapluie (`helm/observabilite/`) :
+les charts officiels `prometheus` et `fluent-bit` y sont déclarés comme dépendances, Elasticsearch et Kibana sont
+des modèles à nous. Toutes leurs ressources sont donc réglées dans **un seul** `values.yaml`.
+
+Ce chart reste séparé de celui de l'application : la surveillance est un outil du cluster, installé à part
+(« Prometheus installé au préalable » dans le sujet). On peut réinstaller ou supprimer l'application sans toucher
+à la surveillance. Le sujet n'impose pas de ressources pour ces outils : nos valeurs respectent la règle générale
+(requests et limits sur chaque pod, y compris les petits conteneurs annexes).
+
+Tout étant installé en même temps, Fluent Bit peut démarrer avant Elasticsearch : il réessaie alors sans limite
+(`Retry_Limit no_limits`) au lieu de perdre les premiers logs. Les sondes readiness d'Elasticsearch et de Kibana
+testent leur API HTTP, pour que `kubectl wait` attende qu'ils soient vraiment prêts.
 
 ### Stockage
 

@@ -41,7 +41,7 @@ Deux types de sources ont servi :
 | Image d'un registre privé (`imagePullSecrets`) | <https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/> | `dockerhub-secret` (README, étape 2) |
 | PersistentVolume / PVC | <https://kubernetes.io/docs/concepts/storage/persistent-volumes/> | `templates/02-storage.yml` |
 | Requests / limits (CPU, mémoire, `ephemeral-storage`) | <https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/> | `values.yaml` (section `resources`) |
-| Sondes readiness / liveness | <https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/> | chaque Deployment, `logging/kibana.yaml` |
+| Sondes readiness / liveness | <https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/> | chaque Deployment, Elasticsearch et Kibana |
 | Affinité entre pods (`podAffinity`) | <https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/> | `templates/06` à `09` |
 | HorizontalPodAutoscaler | <https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/> | `templates/10-hpa.yml` |
 | Démo de l'HPA avec un générateur de charge | <https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale-walkthrough/> | `scripts/load-generator.yml` |
@@ -69,6 +69,7 @@ Deux types de sources ont servi :
 | Fichier `values.yaml` | <https://helm.sh/docs/chart_template_guide/values_files/> | `values.yaml` |
 | Fonctions des modèles (`required`, `quote`...) | <https://helm.sh/docs/chart_template_guide/function_list/> | `templates/01-secret.yml` |
 | Astuces (`toYaml`, `nindent`, `include`) | <https://helm.sh/docs/howto/charts_tips_and_tricks/> | `templates/03` à `09` (ressources) |
+| Dépendances d'un chart (chart parapluie) | <https://helm.sh/docs/helm/helm_dependency/> | `helm/observabilite/Chart.yaml` |
 | `helm upgrade --install` | <https://helm.sh/docs/helm/helm_upgrade/> | README |
 | `helm create` (lien du sujet) | <https://helm.sh/docs/helm/helm_create/> | structure du chart |
 | `helm rollback` | <https://helm.sh/docs/helm/helm_rollback/> | démonstration Helm |
@@ -85,7 +86,7 @@ Deux types de sources ont servi :
 
 | Notion | Lien | Utilisé dans |
 |---|---|---|
-| Chart Helm `prometheus-community/prometheus` | <https://github.com/prometheus-community/helm-charts/tree/main/charts/prometheus> | `monitoring/prometheus-values.yaml` |
+| Chart Helm `prometheus-community/prometheus` | <https://github.com/prometheus-community/helm-charts/tree/main/charts/prometheus> | `helm/observabilite/values.yaml` (section `prometheus`) |
 | Requêtes PromQL | <https://prometheus.io/docs/prometheus/latest/querying/basics/> | README, section 9 |
 | kube-state-metrics (état du cluster) | <https://github.com/kubernetes/kube-state-metrics> | Prometheus |
 | node-exporter (ressources du nœud) | <https://github.com/prometheus/node_exporter> | Prometheus |
@@ -95,16 +96,16 @@ Deux types de sources ont servi :
 
 | Notion | Lien | Utilisé dans |
 |---|---|---|
-| Elasticsearch en conteneur (single-node, mémoire Java) | <https://www.elastic.co/guide/en/elasticsearch/reference/8.15/docker.html> | `logging/elasticsearch.yaml` |
-| Kibana en conteneur | <https://www.elastic.co/guide/en/kibana/8.15/docker.html> | `logging/kibana.yaml` |
-| API d'import des objets Kibana | <https://www.elastic.co/guide/en/kibana/8.15/saved-objects-api-import.html> | import de `kibana-objects.ndjson` |
+| Elasticsearch en conteneur (single-node, mémoire Java) | <https://www.elastic.co/guide/en/elasticsearch/reference/8.15/docker.html> | `helm/observabilite/templates/01-elasticsearch.yml` |
+| Kibana en conteneur | <https://www.elastic.co/guide/en/kibana/8.15/docker.html> | `helm/observabilite/templates/02-kibana.yml` |
+| API d'import des objets Kibana | <https://www.elastic.co/guide/en/kibana/8.15/saved-objects-api-import.html> | import de `helm/observabilite/kibana-objects.ndjson` |
 | Syntaxe des recherches Kibana (KQL) | <https://www.elastic.co/guide/en/kibana/8.15/kuery-query.html> | recherche « Erreurs des services » |
-| Fluent Bit : lecture des fichiers (`tail`) | <https://docs.fluentbit.io/manual/pipeline/inputs/tail> | `logging/fluent-bit-values.yaml` |
+| Fluent Bit : lecture des fichiers (`tail`) | <https://docs.fluentbit.io/manual/pipeline/inputs/tail> | `helm/observabilite/values.yaml` (section `fluent-bit`) |
 | Fluent Bit : messages sur plusieurs lignes | <https://docs.fluentbit.io/manual/pipeline/filters/multiline-stacktrace> | idem |
 | Fluent Bit : script Lua | <https://docs.fluentbit.io/manual/pipeline/filters/lua> | idem (champ `level`) |
 | Fluent Bit : infos Kubernetes | <https://docs.fluentbit.io/manual/pipeline/filters/kubernetes> | idem |
 | Fluent Bit : envoi à Elasticsearch (`Retry_Limit`...) | <https://docs.fluentbit.io/manual/pipeline/outputs/elasticsearch> | idem |
-| Chart Helm officiel de Fluent Bit | <https://github.com/fluent/helm-charts> | README, étape 6 |
+| Chart Helm officiel de Fluent Bit | <https://github.com/fluent/helm-charts> | dépendance de `helm/observabilite/` |
 
 ## 8. Secrets et sécurité
 

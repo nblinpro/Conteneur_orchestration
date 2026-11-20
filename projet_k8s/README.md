@@ -27,7 +27,7 @@ surveillée par Prometheus, et ses logs sont centralisés dans une pile EFK (Ela
 ## 1. Contenu du dossier
 
 ```
-projet_k8s_bis/
+projet_k8s/
 ├── appscore/                       code des applications + Dockerfile fournis par l'enseignant
 ├── helm/
 │   ├── 00-namespace.yml            namespace dotnetgigs (créé avant le chart, étape 2)
@@ -66,6 +66,9 @@ projet_k8s_bis/
 ├── AUTHORS.TXT                     membres du groupe et responsabilités
 └── projet.md                       sujet
 ```
+
+Chaque dossier (`appscore/`, `helm/`, `helm/dotnetgigs/`, `helm/observabilite/`, `traefik/`, `scripts/`, `docs/`)
+contient un petit `README.md` qui détaille sa structure.
 
 ## 2. Les applications
 
@@ -128,7 +131,7 @@ lancer `source ~/.bashrc` (ou ouvrir un nouveau terminal), ou appeler sops par s
 
 - **La clé privée age** dans `~/.config/sops/age/keys.txt` (transmise à part, jamais dans Git : voir section 6).
 
-Toutes les commandes suivantes se lancent depuis le dossier `projet_k8s_bis`.
+Toutes les commandes suivantes se lancent depuis le dossier `projet_k8s`.
 
 ## 5. Builder et publier les images
 
